@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
 const { initializeDatabase } = require('./db/init-db');
+const { setupSocket } = require('./ws/socket');
 
 const app = express();
 
@@ -52,7 +53,8 @@ async function startServer() {
         'tag_management',
         'session_persistence',
         'validation_engine',
-        'shadow_sync'
+        'shadow_sync',
+        'st_interpreter'
       ]
     }));
 
@@ -60,10 +62,14 @@ async function startServer() {
     const PORT = process.env.PORT || 8000;
     const server = http.createServer(app);
     
+    // Setup WebSocket
+    setupSocket(server);
+    
     server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 API available at: http://localhost:${PORT}/api`);
       console.log(`🏥 Health check: http://localhost:${PORT}/`);
+      console.log(`🔌 WebSocket available for real-time sync`);
     });
     
   } catch (error) {

@@ -81,22 +81,32 @@ class TagModel {
     try {
       const existingTag = await this.getById(id);
       
-      const updatedTag = {
-        ...existingTag,
-        ...data,
-        last_update: new Date().toISOString(),
-        metadata: data.metadata ? JSON.stringify(data.metadata) : existingTag.metadata
+      // Map incoming data, handling both camelCase and snake_case
+      const updateData = {
+        last_update: new Date().toISOString()
       };
+      
+      // Only update fields that are provided
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.type !== undefined) updateData.type = data.type;
+      if (data.value !== undefined) updateData.value = data.value;
+      if (data.address !== undefined) updateData.address = data.address;
+      if (data.source !== undefined) updateData.source = data.source;
+      if (data.persist !== undefined) updateData.persist = data.persist;
+      
+      // Handle metadata
+      if (data.metadata !== undefined) {
+        updateData.metadata = typeof data.metadata === 'string' 
+          ? data.metadata 
+          : JSON.stringify(data.metadata);
+      }
       
       await this.db('tags')
         .where('id', id)
-        .update(updatedTag);
+        .update(updateData);
         
-      return {
-        ...updatedTag,
-        metadata: updatedTag.metadata ? JSON.parse(updatedTag.metadata) : null,
-        last_update: new Date(updatedTag.last_update)
-      };
+      const updatedTag = await this.getById(id);
+      return updatedTag;
     } catch (error) {
       throw new Error(`Failed to update tag: ${error.message}`);
     }

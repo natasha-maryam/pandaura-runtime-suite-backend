@@ -9,7 +9,9 @@
     "start": "node src/server.js",
     "migrate": "knex migrate:latest --knexfile src/db/knexfile.js",
     "seed": "knex seed:run --knexfile src/db/knexfile.js",
-    "reset-db": "knex migrate:rollback --all --knexfile src/db/knexfile.js && npm run migrate && npm run seed"
+    "reset-db": "knex migrate:rollback --all --knexfile src/db/knexfile.js && npm run migrate && npm run seed",
+    "demo-setup": "node src/db/demo-setup.js",
+    "demo": "npm run demo-setup && npm run dev"
   },
   "repository": {
     "type": "git",

@@ -24,8 +24,6 @@ router.post('/tags', async (req, res) => {
     const now = new Date().toISOString();
     for (const tag of tags) {
       await tagModel.update(tag.id, {
-        ...tag,
-        lastUpdate: now,
         source: 'shadow'
       });
     }
@@ -93,29 +91,53 @@ router.post('/push', async (req, res) => {
     // Simulate pushing to runtime
     await new Promise(resolve => setTimeout(resolve, 500));
     
-    // In a real implementation, this would:
-    // 1. Parse the logic file
-    // 2. Extract tag references
-    // 3. Send to shadow/live runtime
-    // 4. Update runtime state
+    // Generate warnings for live push
+    const warnings = [];
+    if (target === 'live') {
+      if (logicFile.content.toLowerCase().includes('emergency')) {
+        warnings.push('⚠️ Logic modifies emergency stop systems');
+      }
+      if (logicFile.content.length > 1000) {
+        warnings.push('⚠️ Large logic file may impact PLC cycle time');
+      }
+      if (logicFile.content.includes('TODO') || logicFile.content.includes('FIXME')) {
+        warnings.push('⚠️ Logic contains TODO/FIXME comments');
+      }
+      // Always add at least one warning for demo
+      if (warnings.length === 0) {
+        warnings.push('✓ All safety checks passed - Logic ready for deployment');
+      }
+    }
     
-    // For now, store it as the "active" logic in shadow runtime
-    // This could be stored in database or memory for simulator to access
-    global.shadowRuntimeLogic = {
-      id: logicId,
-      name: logicFile.name,
-      content: logicFile.content,
-      vendor: logicFile.vendor,
-      author: logicFile.author,
-      deployedAt: new Date().toISOString(),
-      status: 'active'
-    };
+    // Store it as the "active" logic
+    if (target === 'shadow') {
+      global.shadowRuntimeLogic = {
+        id: logicId,
+        name: logicFile.name,
+        content: logicFile.content,
+        vendor: logicFile.vendor,
+        author: logicFile.author,
+        deployedAt: new Date().toISOString(),
+        status: 'active'
+      };
+    } else {
+      global.liveRuntimeLogic = {
+        id: logicId,
+        name: logicFile.name,
+        content: logicFile.content,
+        vendor: logicFile.vendor,
+        author: logicFile.author,
+        deployedAt: new Date().toISOString(),
+        status: 'active'
+      };
+    }
     
     res.json({
       success: true,
       logicId,
       target,
       message: `Logic "${logicFile.name}" pushed to ${target} runtime successfully`,
+      warnings: warnings.length > 0 ? warnings : undefined,
       timestamp: new Date().toISOString(),
       deployedLogic: {
         id: logicId,
@@ -135,14 +157,126 @@ router.post('/push', async (req, res) => {
 // GET /sync/status - Get sync status
 router.get('/status', async (req, res) => {
   try {
+    // Check if Beremiz is available (simulation for now)
+    const executionMode = 'simulation'; // In real implementation, check actual Beremiz availability
+    
+    // For demo purposes, simulate live runtime being ready
+    const liveOk = true; // Simulate live PLC connection
+    const shadowOk = true;
+    
     res.json({
       connected: true,
-      shadowOk: true,
-      liveOk: true,
-      lastSync: new Date().toISOString(),
+      shadowOk: shadowOk,
+      liveOk: liveOk, // Now returns true for demo
+      lastSync: global.shadowRuntimeLogic ? global.shadowRuntimeLogic.deployedAt : null,
       latency: Math.floor(Math.random() * 50) + 10, // Simulate 10-60ms latency
-      conflicts: [],
+      conflicts: global.syncConflicts || [],
+      executionMode,
       deployedLogic: global.shadowRuntimeLogic || null
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /sync/generate-conflicts - Generate mock conflicts for demo
+router.post('/generate-conflicts', async (req, res) => {
+  try {
+    const mockConflicts = [
+      {
+        id: `conflict-${Date.now()}-1`,
+        tagName: 'Temperature_SP',
+        shadowValue: 75.0,
+        liveValue: 72.5,
+        timestamp: new Date().toISOString(),
+        type: 'VALUE_CONFLICT',
+        resolved: false,
+        description: 'Setpoint value differs between shadow and live runtime'
+      },
+      {
+        id: `conflict-${Date.now()}-2`,
+        tagName: 'Pump_Run',
+        shadowValue: true,
+        liveValue: false,
+        timestamp: new Date().toISOString(),
+        type: 'VALUE_CONFLICT',
+        resolved: false,
+        description: 'Pump control state mismatch detected'
+      }
+    ];
+    
+    // Store conflicts globally
+    if (!global.syncConflicts) {
+      global.syncConflicts = [];
+    }
+    global.syncConflicts.push(...mockConflicts);
+    
+    res.json({
+      success: true,
+      conflicts: mockConflicts,
+      message: `Generated ${mockConflicts.length} conflicts`
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /sync/resolve-conflict - Resolve a conflict
+router.post('/resolve-conflict', async (req, res) => {
+  try {
+    const { conflictId, resolution } = req.body;
+    
+    if (!global.syncConflicts) {
+      global.syncConflicts = [];
+    }
+    
+    const conflict = global.syncConflicts.find(c => c.id === conflictId);
+    if (conflict) {
+      conflict.resolved = true;
+      conflict.resolution = resolution;
+      conflict.resolvedAt = new Date().toISOString();
+    }
+    
+    res.json({
+      success: true,
+      conflictId,
+      resolution,
+      message: `Conflict resolved: keeping ${resolution} value`
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /sync/start-streaming - Start tag streaming from simulator
+router.post('/start-streaming', async (req, res) => {
+  try {
+    // Mark streaming as active
+    global.tagStreamingActive = true;
+    
+    res.json({
+      success: true,
+      message: 'Tag streaming started - values from simulator'
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /sync/stream-tags - Get current tag values from simulator
+router.get('/stream-tags', async (req, res) => {
+  try {
+    const simulatorEngine = require('../simulator/engine');
+    const state = simulatorEngine.getState();
+    
+    // Return real values from simulator
+    const tags = state.ioValues || {};
+    
+    res.json({
+      tags: tags,
+      streaming: state.isRunning,
+      timestamp: new Date().toISOString(),
+      cycleCount: simulatorEngine.compiledProgram ? simulatorEngine.compiledProgram.runtime.cycleCount : 0
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

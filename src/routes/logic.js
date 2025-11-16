@@ -1,4 +1,6 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const LogicModel = require('../models/logicModel');
 const { db } = require('../db/init-db');
 
@@ -438,6 +440,81 @@ router.get('/:id/diff', async (req, res) => {
       summary: diff.summary
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /logic/samples - Load sample logic files
+router.get('/samples', async (req, res) => {
+  try {
+    const samplesDir = path.join(__dirname, '../../..', 'pandoura-main', 'public', 'sample-logic');
+    
+    // Check if samples directory exists
+    if (!fs.existsSync(samplesDir)) {
+      return res.json({ samples: [] });
+    }
+    
+    const files = fs.readdirSync(samplesDir).filter(file => file.endsWith('.st'));
+    const samples = [];
+    
+    for (const file of files) {
+      const filePath = path.join(samplesDir, file);
+      const content = fs.readFileSync(filePath, 'utf8');
+      const name = path.basename(file, '.st');
+      
+      samples.push({
+        id: `sample-${name.toLowerCase()}`,
+        name: file,
+        content,
+        vendor: 'neutral',
+        author: 'System',
+        lastModified: new Date().toISOString(),
+        isSample: true
+      });
+    }
+    
+    res.json({ samples });
+  } catch (error) {
+    console.error('Error loading sample files:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /logic/load-sample - Load a sample file into the database
+router.post('/load-sample', async (req, res) => {
+  try {
+    const { sampleId } = req.body;
+    
+    if (!sampleId) {
+      return res.status(400).json({ error: 'Sample ID is required' });
+    }
+    
+    const samplesDir = path.join(__dirname, '../../..', 'pandoura-main', 'public', 'sample-logic');
+    const sampleName = sampleId.replace('sample-', '');
+    const fileName = `${sampleName.charAt(0).toUpperCase() + sampleName.slice(1)}.st`;
+    const filePath = path.join(samplesDir, fileName);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Sample file not found' });
+    }
+    
+    const content = fs.readFileSync(filePath, 'utf8');
+    
+    // Create logic file in database
+    const logicFile = await logicModel.create({
+      name: fileName,
+      content,
+      vendor: 'neutral',
+      author: 'System Sample'
+    });
+    
+    res.json({
+      success: true,
+      logicFile,
+      message: `Sample "${fileName}" loaded successfully`
+    });
+  } catch (error) {
+    console.error('Error loading sample:', error);
     res.status(500).json({ error: error.message });
   }
 });
