@@ -19,8 +19,9 @@ async function setupDemoData() {
     await db('logic_files').del();
     await db('tags').del();
     
-    // Load sample logic files
-    console.log('📁 Loading sample logic files...');
+    // Load sample logic files - DISABLED (no samples)
+    console.log('📁 Sample logic files disabled - database starts empty');
+    /* 
     const samplesDir = path.join(__dirname, '../../..', 'pandoura-main', 'public', 'sample-logic');
     
     if (fs.existsSync(samplesDir)) {
@@ -40,6 +41,7 @@ async function setupDemoData() {
         console.log(`  ✓ Loaded ${file}`);
       }
     }
+    */
     
     // Create demo tags
     console.log('🏷️  Creating demo tags...');

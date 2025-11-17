@@ -312,8 +312,22 @@ class Runtime {
     this.program=program; this.vars={}; this.fbInstances={}; this.logs=[]; this.cycleCount=0;
     this.initFromDeclarations(); this.stdlib=this.createStdLib();
   }
-  initFromDeclarations(){ for(const d of this.program.declarations) this.vars[d.name]={type:d.type,value:this.defaultForType(d.type,d.init)}; }
-  defaultForType(type,initExpr){ if(!type) return null; if(typeof type==='string'){ switch(type){ case'BOOL': return false; case'INT': return 0; case'REAL': return 0.0; case'STRING': return ''; default: return {_fbType:type,Q:false,ET:0}; } } else if(type.kind==='ARRAY'){ return Array.from({length:type.high-type.low+1},()=>this.defaultForType(type.base)); } return null; }
+  initFromDeclarations(){ 
+    for(const d of this.program.declarations) {
+      // If init expression exists, evaluate it; otherwise use default
+      let value = this.defaultForType(d.type);
+      if(d.init) {
+        try {
+          value = this.evalExpression(d.init);
+        } catch(e) {
+          // If eval fails, use default
+          value = this.defaultForType(d.type);
+        }
+      }
+      this.vars[d.name]={type:d.type,value:value};
+    }
+  }
+  defaultForType(type){ if(!type) return null; if(typeof type==='string'){ switch(type){ case'BOOL': return false; case'INT': return 0; case'REAL': return 0.0; case'STRING': return ''; default: return {_fbType:type,Q:false,ET:0}; } } else if(type.kind==='ARRAY'){ return Array.from({length:type.high-type.low+1},()=>this.defaultForType(type.base)); } return null; }
 
   createStdLib(){
     const that=this;

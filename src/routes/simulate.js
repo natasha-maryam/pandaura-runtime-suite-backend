@@ -1,6 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const simulatorEngine = require('../simulator/engine');
+const axios = require('axios');
+
+// Helper to sync tags from simulator variables
+async function syncTagsFromSimulator(variables) {
+  try {
+    await axios.post('http://localhost:3001/api/tags/sync-from-simulator', {
+      variables
+    });
+    console.log('Tags synced from simulator variables');
+  } catch (error) {
+    console.error('Failed to sync tags:', error.message);
+  }
+}
 
 // POST /simulate/run - Run simulation with logic
 router.post('/run', async (req, res) => {
@@ -26,6 +39,9 @@ router.post('/run', async (req, res) => {
     });
     
     const state = simulatorEngine.getState();
+    
+    // Auto-sync tags from simulator variables to tag database
+    await syncTagsFromSimulator(state.ioValues);
     
     res.json({
       success: true,

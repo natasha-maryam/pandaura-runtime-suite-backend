@@ -444,8 +444,19 @@ router.get('/:id/diff', async (req, res) => {
   }
 });
 
-// GET /logic/samples - Load sample logic files
+// GET /logic/samples - No sample files available
 router.get('/samples', async (req, res) => {
+  try {
+    // Samples removed - return empty array
+    res.json({ samples: [] });
+  } catch (error) {
+    console.error('Error loading sample files:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Legacy route - kept for compatibility
+router.get('/samples-old', async (req, res) => {
   try {
     const samplesDir = path.join(__dirname, '../../..', 'pandoura-main', 'public', 'sample-logic');
     
