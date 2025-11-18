@@ -35,6 +35,7 @@ async function startServer() {
     const simulateRoutes = require('./routes/simulate');
     const sessionRoutes = require('./routes/sessions');
     const syncRoutes = require('./routes/sync');
+    const projectRoutes = require('./routes/projects');
     
     // Mount routes
     app.use('/api/logic', logicRoutes);
@@ -42,6 +43,7 @@ async function startServer() {
     app.use('/api/simulate', simulateRoutes);
     app.use('/api/sessions', sessionRoutes);
     app.use('/api/sync', syncRoutes);
+    app.use('/api/projects', projectRoutes);
     
     // Health check
     app.get('/', (req, res) => res.json({
