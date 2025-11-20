@@ -14,8 +14,20 @@ app.use(cors({
   origin: ['http://localhost:5173'],
   credentials: true
 }));
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ extended: true }));
+
+// Increase body size limits for large version payloads (logic files + tags)
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+
+// Log all incoming requests
+app.use((req, res, next) => {
+  console.log(`📥 ${req.method} ${req.path}`);
+  if (req.body && Object.keys(req.body).length > 0) {
+    const bodySize = JSON.stringify(req.body).length;
+    console.log(`   Body size: ${(bodySize / 1024).toFixed(2)} KB`);
+  }
+  next();
+});
 
 // Ensure data directory exists
 const dataDir = path.join(__dirname, '../data');
@@ -36,6 +48,7 @@ async function startServer() {
     const sessionRoutes = require('./routes/sessions');
     const syncRoutes = require('./routes/sync');
     const projectRoutes = require('./routes/projects');
+    const versionRoutes = require('./routes/versions');
     
     // Mount routes
     app.use('/api/logic', logicRoutes);
@@ -44,11 +57,12 @@ async function startServer() {
     app.use('/api/sessions', sessionRoutes);
     app.use('/api/sync', syncRoutes);
     app.use('/api/projects', projectRoutes);
+    app.use('/api/versions', versionRoutes);
     
     // Health check
     app.get('/', (req, res) => res.json({
       ok: true,
-      version: 'milestone-2-backend',
+      version: 'milestone-3-backend',
       timestamp: new Date().toISOString(),
       features: [
         'logic_files',
@@ -56,13 +70,23 @@ async function startServer() {
         'session_persistence',
         'validation_engine',
         'shadow_sync',
-        'st_interpreter'
+        'st_interpreter',
+        'version_control',
+        'release_management',
+        'diff_engine',
+        'snapshot_system'
       ]
     }));
 
-    // Start HTTP server
+    // Start HTTP server with increased limits
     const PORT = process.env.PORT || 8000;
-    const server = http.createServer(app);
+    const server = http.createServer({
+      // Increase max header size to 16KB (default is 8KB)
+      maxHeaderSize: 16384,
+    }, app);
+    
+    // Set server timeout to 2 minutes for large payloads
+    server.timeout = 120000;
     
     // Setup WebSocket
     setupSocket(server);

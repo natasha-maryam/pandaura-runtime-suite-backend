@@ -5,11 +5,18 @@ class LogicModel {
     this.db = db;
   }
 
-  async getAll() {
+  async getAll(projectId = null) {
     try {
-      const files = await this.db('logic_files')
+      let query = this.db('logic_files')
         .select('*')
         .orderBy('last_modified', 'desc');
+      
+      // Filter by project if projectId provided
+      if (projectId) {
+        query = query.where('project_id', projectId);
+      }
+      
+      const files = await query;
       
       // Map database fields to frontend expected format
       return files.map(file => ({
@@ -19,7 +26,8 @@ class LogicModel {
         vendor: file.vendor,
         lastModified: file.last_modified,
         author: file.author,
-        snapshot: file.snapshot
+        snapshot: file.snapshot,
+        projectId: file.project_id
       }));
     } catch (error) {
       throw new Error(`Failed to fetch logic files: ${error.message}`);
@@ -52,7 +60,7 @@ class LogicModel {
   }
 
   async create(data) {
-    const { name, content, vendor = 'neutral', author = 'Engineer' } = data;
+    const { name, content, vendor = 'neutral', author = 'Engineer', projectId } = data;
     
     if (!name || !content) {
       throw new Error('Name and content are required');
@@ -67,6 +75,7 @@ class LogicModel {
         name,
         content,
         vendor,
+        project_id: projectId || null,
         last_modified: now,
         author
       };

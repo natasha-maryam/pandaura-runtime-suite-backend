@@ -258,10 +258,11 @@ function longestCommonSubsequence(arr1, arr2) {
   return dp[m][n];
 }
 
-// GET /logic - Get all logic files
+// GET /logic - Get all logic files (optionally filtered by project)
 router.get('/', async (req, res) => {
   try {
-    const files = await logicModel.getAll();
+    const { projectId } = req.query;
+    const files = await logicModel.getAll(projectId);
     res.json(files);
   } catch (error) {
     res.status(500).json({ error: error.message });
