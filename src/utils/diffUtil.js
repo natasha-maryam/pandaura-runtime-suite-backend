@@ -275,6 +275,15 @@ class DiffUtil {
       // Check for added and modified files
       for (const [path, newFile] of newFileMap) {
         try {
+          // Skip tags.json files and other metadata files
+          if (path.endsWith('tags.json') || 
+              path.includes('tags/tags.json') ||
+              path.endsWith('.tags.json') ||
+              path.includes('/tags.json')) {
+            console.log(`  ⏭️  Skipping metadata file: ${path}`);
+            continue;
+          }
+
           const oldFile = oldFileMap.get(path);
 
           if (!oldFile) {
@@ -316,6 +325,15 @@ class DiffUtil {
       // Check for deleted files
       for (const [path, oldFile] of oldFileMap) {
         try {
+          // Skip tags.json files and other metadata files
+          if (path.endsWith('tags.json') || 
+              path.includes('tags/tags.json') ||
+              path.endsWith('.tags.json') ||
+              path.includes('/tags.json')) {
+            console.log(`  ⏭️  Skipping metadata file: ${path}`);
+            continue;
+          }
+
           if (!newFileMap.has(path)) {
             console.log(`  ➖ File deleted: ${path}`);
             fileChanges.push({

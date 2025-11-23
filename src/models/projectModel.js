@@ -154,18 +154,86 @@ class ProjectModel {
    * Get project statistics
    */
   async getProjectStats(projectId) {
-    const [logicCount, tagCount, versionCount] = await Promise.all([
+    const [logicCount, versionCount] = await Promise.all([
       this.db('logic_files').where({ project_id: projectId }).count('* as count').first(),
-      this.db('tags').where({ project_id: projectId }).count('* as count').first(),
-      // Assuming versions will be tracked in future
-      Promise.resolve({ count: 0 }),
+      this.db('versions').where({ project_id: projectId }).count('* as count').first(),
     ]);
+
+    // Get tags from logic files
+    const logicFiles = await this.db('logic_files')
+      .where({ project_id: projectId })
+      .select('content');
+    
+    // Extract unique tags from all logic files
+    const tagSet = new Set();
+    logicFiles.forEach(file => {
+      const tags = this.extractTagsFromContent(file.content);
+      tags.forEach(tag => tagSet.add(tag));
+    });
 
     return {
       logicFiles: parseInt(logicCount.count, 10),
-      tags: parseInt(tagCount.count, 10),
-      versions: 0, // Placeholder
+      tags: tagSet.size,
+      versions: parseInt(versionCount.count, 10),
     };
+  }
+
+  /**
+   * Extract tag names from Structured Text content
+   */
+  extractTagsFromContent(content) {
+    const tags = new Set();
+    
+    if (!content) return tags;
+
+    // Patterns to match variable declarations in Structured Text
+    const patterns = [
+      // VAR blocks: VAR ... END_VAR
+      /VAR(?:_INPUT|_OUTPUT|_IN_OUT|_TEMP|_GLOBAL|_EXTERNAL)?\s+([\s\S]*?)\s+END_VAR/gi,
+      // Direct variable assignments (simplified)
+      /(\w+)\s*:=/g,
+      // Variable references in expressions
+      /\b([A-Z_][A-Z0-9_]*)\b/g
+    ];
+
+    // Extract from VAR blocks
+    const varBlockRegex = /VAR(?:_INPUT|_OUTPUT|_IN_OUT|_TEMP|_GLOBAL|_EXTERNAL)?\s+([\s\S]*?)\s+END_VAR/gi;
+    let match;
+    
+    while ((match = varBlockRegex.exec(content)) !== null) {
+      const varBlock = match[1];
+      // Parse individual variable declarations: name : TYPE;
+      const varDeclarations = varBlock.match(/(\w+)\s*:\s*[A-Z_][A-Z0-9_]*/gi);
+      
+      if (varDeclarations) {
+        varDeclarations.forEach(decl => {
+          const varName = decl.split(/\s*:\s*/)[0].trim();
+          if (varName && varName.length > 1) {
+            tags.add(varName);
+          }
+        });
+      }
+    }
+
+    // Also look for common PLC tag patterns (uppercase with underscores)
+    const tagPattern = /\b([A-Z_][A-Z0-9_]{2,})\b/g;
+    while ((match = tagPattern.exec(content)) !== null) {
+      const tagName = match[1];
+      // Filter out common keywords
+      const keywords = ['VAR', 'END_VAR', 'IF', 'THEN', 'ELSE', 'ELSIF', 'END_IF', 'FOR', 'TO', 'DO', 'END_FOR',
+                       'WHILE', 'END_WHILE', 'REPEAT', 'UNTIL', 'END_REPEAT', 'CASE', 'OF', 'END_CASE',
+                       'FUNCTION', 'END_FUNCTION', 'PROGRAM', 'END_PROGRAM', 'FUNCTION_BLOCK', 'END_FUNCTION_BLOCK',
+                       'TRUE', 'FALSE', 'AND', 'OR', 'NOT', 'XOR', 'MOD', 'RETURN', 'EXIT',
+                       'VAR_INPUT', 'VAR_OUTPUT', 'VAR_IN_OUT', 'VAR_TEMP', 'VAR_GLOBAL', 'VAR_EXTERNAL',
+                       'BOOL', 'INT', 'REAL', 'STRING', 'TIME', 'DINT', 'WORD', 'DWORD', 'BYTE', 
+                       'ARRAY', 'STRUCT', 'END_STRUCT', 'TYPE', 'END_TYPE', 'CONSTANT', 'RETAIN', 'AT'];
+      
+      if (!keywords.includes(tagName) && tagName.length >= 3) {
+        tags.add(tagName);
+      }
+    }
+
+    return tags;
   }
 }
 
