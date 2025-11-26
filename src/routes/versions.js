@@ -344,10 +344,11 @@ router.post('/projects/:projectId/snapshots', async (req, res) => {
 router.get('/projects/:projectId/releases', async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { status } = req.query;
+    const { status, environment } = req.query;
 
     const filters = {};
     if (status) filters.status = status;
+    if (environment) filters.environment = environment;
 
     const releases = await versionModel.getReleases(projectId, filters);
     res.json({ success: true, releases });

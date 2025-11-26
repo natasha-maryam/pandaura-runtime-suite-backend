@@ -49,6 +49,7 @@ async function startServer() {
     const syncRoutes = require('./routes/sync');
     const projectRoutes = require('./routes/projects');
     const versionRoutes = require('./routes/versions');
+    const deployRoutes = require('./routes/deploy');
     
     // Mount routes
     app.use('/api/logic', logicRoutes);
@@ -58,6 +59,7 @@ async function startServer() {
     app.use('/api/sync', syncRoutes);
     app.use('/api/projects', projectRoutes);
     app.use('/api/versions', versionRoutes);
+    app.use('/api/deploy', deployRoutes);
     
     // Health check
     app.get('/', (req, res) => res.json({
@@ -74,7 +76,12 @@ async function startServer() {
         'version_control',
         'release_management',
         'diff_engine',
-        'snapshot_system'
+        'snapshot_system',
+        'deployment_workflow',
+        'safety_checks',
+        'approval_system',
+        'automatic_rollback',
+        'snapshot_promotion'
       ]
     }));
 

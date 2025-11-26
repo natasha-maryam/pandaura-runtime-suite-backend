@@ -631,6 +631,10 @@ class VersionModel {
       query = query.where({ status: filters.status });
     }
 
+    if (filters.environment) {
+      query = query.where({ environment: filters.environment });
+    }
+
     const releases = await query;
     return releases.map(this.formatRelease);
   }
