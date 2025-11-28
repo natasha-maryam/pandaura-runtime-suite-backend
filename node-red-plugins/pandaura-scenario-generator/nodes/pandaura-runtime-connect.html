@@ -1,0 +1,254 @@
+<!-- PandaUra Runtime Connect Node Configuration -->
+<script type="text/javascript">
+    RED.nodes.registerType('pandaura-runtime-connect', {
+        category: 'PandaUra',
+        color: '#4CAF50',
+        defaults: {
+            name: { value: "" },
+            pandauraHost: { value: "localhost:8000", required: true },
+            connectionType: { value: "http" },
+            authToken: { value: "" },
+            autoReconnect: { value: true },
+            heartbeatInterval: { value: 30000 }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "bridge.png",
+        label: function() {
+            return this.name || `PandaUra Connect (${this.pandauraHost})`;
+        },
+        labelStyle: function() {
+            return this.name ? "node_label_italic" : "";
+        },
+        oneditprepare: function() {
+            const node = this;
+            
+            // Connection type change handler
+            $("#node-input-connectionType").change(function() {
+                const connectionType = $(this).val();
+                
+                if (connectionType === 'websocket') {
+                    $("#websocket-options").show();
+                } else {
+                    $("#websocket-options").hide();
+                }
+            }).trigger('change');
+            
+            // Test connection button
+            $("#test-connection").click(function() {
+                const host = $("#node-input-pandauraHost").val();
+                const connectionType = $("#node-input-connectionType").val();
+                const authToken = $("#node-input-authToken").val();
+                
+                const button = $(this);
+                button.prop('disabled', true).text('Testing...');
+                
+                let testUrl;
+                let testPromise;
+                
+                if (connectionType === 'websocket') {
+                    // Test WebSocket connection
+                    testUrl = `ws://${host}/ws/simulator`;
+                    
+                    try {
+                        const ws = new WebSocket(testUrl);
+                        
+                        testPromise = new Promise((resolve, reject) => {
+                            const timeout = setTimeout(() => {
+                                ws.close();
+                                reject(new Error('Connection timeout'));
+                            }, 5000);
+                            
+                            ws.onopen = () => {
+                                clearTimeout(timeout);
+                                ws.close();
+                                resolve({ status: 'Connected via WebSocket' });
+                            };
+                            
+                            ws.onerror = (error) => {
+                                clearTimeout(timeout);
+                                reject(error);
+                            };
+                        });
+                    } catch (error) {
+                        testPromise = Promise.reject(error);
+                    }
+                } else {
+                    // Test HTTP connection
+                    testUrl = `http://${host}/api/simulate/status`;
+                    
+                    const headers = {};
+                    if (authToken) {
+                        headers['Authorization'] = `Bearer ${authToken}`;
+                    }
+                    
+                    testPromise = fetch(testUrl, { 
+                        method: 'GET', 
+                        headers,
+                        signal: AbortSignal.timeout(5000)
+                    }).then(response => {
+                        if (response.ok) {
+                            return response.json();
+                        } else {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                    });
+                }
+                
+                testPromise
+                    .then(result => {
+                        RED.notify("Connection successful", "success");
+                        console.log('Connection test result:', result);
+                    })
+                    .catch(error => {
+                        RED.notify(`Connection failed: ${error.message}`, "error");
+                        console.error('Connection test failed:', error);
+                    })
+                    .finally(() => {
+                        button.prop('disabled', false).text('Test Connection');
+                    });
+            });
+            
+            // Auto-detect PandaUra instance
+            $("#auto-detect").click(function() {
+                const commonPorts = [8000, 3000, 5000, 8080];
+                const commonHosts = ['localhost', '127.0.0.1'];
+                
+                const button = $(this);
+                button.prop('disabled', true).text('Detecting...');
+                
+                const testConfigurations = [];
+                
+                commonHosts.forEach(host => {
+                    commonPorts.forEach(port => {
+                        testConfigurations.push(`${host}:${port}`);
+                    });
+                });
+                
+                const testNext = (index) => {
+                    if (index >= testConfigurations.length) {
+                        RED.notify("No PandaUra instance found", "error");
+                        button.prop('disabled', false).text('Auto-Detect');
+                        return;
+                    }
+                    
+                    const config = testConfigurations[index];
+                    const testUrl = `http://${config}/api/simulate/status`;
+                    
+                    fetch(testUrl, { 
+                        method: 'GET',
+                        signal: AbortSignal.timeout(2000)
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            $("#node-input-pandauraHost").val(config);
+                            RED.notify(`Found PandaUra at ${config}`, "success");
+                            button.prop('disabled', false).text('Auto-Detect');
+                        } else {
+                            testNext(index + 1);
+                        }
+                    })
+                    .catch(() => {
+                        testNext(index + 1);
+                    });
+                };
+                
+                testNext(0);
+            });
+        },
+        oneditsave: function() {
+            // Validation can be added here
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="pandaura-runtime-connect">
+    <div class="form-row">
+        <label for="node-input-name"><i class="icon-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Runtime Connection">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-pandauraHost"><i class="icon-globe"></i> PandaUra Host</label>
+        <input type="text" id="node-input-pandauraHost" placeholder="localhost:8000">
+        <div style="margin-top: 5px;">
+            <button type="button" id="test-connection" style="margin-right: 10px;">Test Connection</button>
+            <button type="button" id="auto-detect">Auto-Detect</button>
+        </div>
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-connectionType"><i class="icon-link"></i> Connection Type</label>
+        <select id="node-input-connectionType">
+            <option value="http">HTTP/REST API</option>
+            <option value="websocket">WebSocket</option>
+        </select>
+    </div>
+    
+    <div id="websocket-options" class="form-row" style="display: none;">
+        <label for="node-input-heartbeatInterval"><i class="icon-clock-o"></i> Heartbeat Interval (ms)</label>
+        <input type="number" id="node-input-heartbeatInterval" min="5000" max="300000" placeholder="30000">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-authToken"><i class="icon-key"></i> Auth Token (Optional)</label>
+        <input type="password" id="node-input-authToken" placeholder="Bearer token for authentication">
+    </div>
+    
+    <div class="form-row">
+        <input type="checkbox" id="node-input-autoReconnect" style="display: inline-block; width: auto; vertical-align: top;">
+        <label for="node-input-autoReconnect" style="width: 70%;"> Auto-reconnect on connection loss</label>
+    </div>
+    
+    <div class="form-tips">
+        <strong>Connection Tips:</strong>
+        <ul style="margin: 5px 0; padding-left: 20px;">
+            <li>HTTP is recommended for basic API calls and fault injection</li>
+            <li>WebSocket provides real-time bidirectional communication</li>
+            <li>Use auto-detect if you're unsure of the PandaUra instance location</li>
+            <li>Auth token is only required if PandaUra has authentication enabled</li>
+        </ul>
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="pandaura-runtime-connect">
+    <p>A Node-RED node for connecting to PandaUra Shadow Runtime instances.</p>
+    
+    <h3>Connection Types</h3>
+    <ul>
+        <li><strong>HTTP/REST API:</strong> Standard API calls for commands and queries</li>
+        <li><strong>WebSocket:</strong> Real-time bidirectional communication</li>
+    </ul>
+    
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload.command <span class="property-type">object</span></dt>
+        <dd>Runtime command to execute</dd>
+        <dt>topic <span class="property-type">string</span></dt>
+        <dd>Control commands: "connect", "disconnect"</dd>
+    </dl>
+    
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>Runtime response or status information</dd>
+    </dl>
+    
+    <h3>Events</h3>
+    <p>This node emits events that other PandaUra nodes can listen to:</p>
+    <ul>
+        <li><strong>connected:</strong> Successfully connected to runtime</li>
+        <li><strong>disconnected:</strong> Connection lost</li>
+        <li><strong>variable_update:</strong> Variable value changed</li>
+        <li><strong>fault_status:</strong> Fault injection status update</li>
+        <li><strong>system_status:</strong> System status change</li>
+    </ul>
+    
+    <h3>Details</h3>
+    <p>This node manages the connection to PandaUra Shadow Runtime and provides 
+    communication services for other PandaUra nodes in the flow. It automatically 
+    handles reconnection, heartbeat monitoring, and authentication.</p>
+    
+    <p>Other PandaUra nodes (fault injector, tag monitor, scenario generator) will 
+    automatically use this connection when available in the same flow.</p>
+</script>

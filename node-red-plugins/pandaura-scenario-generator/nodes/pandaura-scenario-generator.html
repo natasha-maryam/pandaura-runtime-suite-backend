@@ -1,0 +1,197 @@
+<!-- PandaUra Scenario Generator Node Configuration -->
+<script type="text/javascript">
+    RED.nodes.registerType('pandaura-scenario-generator', {
+        category: 'PandaUra',
+        color: '#2E8B57',
+        defaults: {
+            name: { value: "" },
+            pandauraHost: { value: "localhost:8000" },
+            scenario: { value: [] },
+            loopCount: { value: 1 },
+            loopDelay: { value: 5000 }
+        },
+        inputs: 1,
+        outputs: 2,
+        outputLabels: ["progress", "complete"],
+        icon: "arrow-in.png",
+        label: function() {
+            return this.name || "PandaUra Scenario";
+        },
+        labelStyle: function() {
+            return this.name ? "node_label_italic" : "";
+        },
+        oneditprepare: function() {
+            const node = this;
+            
+            // Initialize scenario steps table
+            $("#scenario-steps-table").editableTable({
+                addButton: $("#add-step-button"),
+                columns: [
+                    { label: "Step", name: "step", width: "60px", type: "number" },
+                    { label: "Action", name: "action", width: "120px", type: "select", 
+                      options: [
+                          { value: "setVariable", label: "Set Variable" },
+                          { value: "waitDelay", label: "Wait Delay" },
+                          { value: "injectFault", label: "Inject Fault" },
+                          { value: "checkpoint", label: "Checkpoint" }
+                      ]
+                    },
+                    { label: "Target", name: "target", width: "150px" },
+                    { label: "Value", name: "value", width: "100px" },
+                    { label: "Duration", name: "duration", width: "80px" },
+                    { label: "Description", name: "description", width: "200px" }
+                ]
+            });
+            
+            // Load existing scenario steps
+            if (node.scenario) {
+                node.scenario.forEach(step => {
+                    $("#scenario-steps-table").editableTable('addRow', step);
+                });
+            }
+            
+            // Test connection button
+            $("#test-connection").click(function() {
+                const host = $("#node-input-pandauraHost").val();
+                
+                $.get(`http://${host}/api/simulate/status`)
+                    .done(function() {
+                        RED.notify("Connection successful", "success");
+                    })
+                    .fail(function() {
+                        RED.notify("Connection failed", "error");
+                    });
+            });
+            
+            // Import scenario from file
+            $("#import-scenario").click(function() {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                
+                input.onchange = function(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = function(event) {
+                            try {
+                                const scenario = JSON.parse(event.target.result);
+                                $("#scenario-steps-table").editableTable('empty');
+                                scenario.forEach(step => {
+                                    $("#scenario-steps-table").editableTable('addRow', step);
+                                });
+                                RED.notify("Scenario imported successfully", "success");
+                            } catch (error) {
+                                RED.notify("Invalid scenario file", "error");
+                            }
+                        };
+                        reader.readAsText(file);
+                    }
+                };
+                
+                input.click();
+            });
+            
+            // Export scenario to file
+            $("#export-scenario").click(function() {
+                const scenario = $("#scenario-steps-table").editableTable('getData');
+                const blob = new Blob([JSON.stringify(scenario, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'pandaura-scenario.json';
+                a.click();
+                
+                URL.revokeObjectURL(url);
+            });
+        },
+        oneditsave: function() {
+            this.scenario = $("#scenario-steps-table").editableTable('getData');
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="pandaura-scenario-generator">
+    <div class="form-row">
+        <label for="node-input-name"><i class="icon-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Scenario Name">
+    </div>
+    <div class="form-row">
+        <label for="node-input-pandauraHost"><i class="icon-globe"></i> PandaUra Host</label>
+        <input type="text" id="node-input-pandauraHost" placeholder="localhost:8000">
+        <button type="button" id="test-connection" style="margin-left: 10px;">Test Connection</button>
+    </div>
+    <div class="form-row">
+        <label for="node-input-loopCount"><i class="icon-repeat"></i> Loop Count</label>
+        <input type="number" id="node-input-loopCount" min="1" max="1000">
+    </div>
+    <div class="form-row">
+        <label for="node-input-loopDelay"><i class="icon-clock-o"></i> Loop Delay (ms)</label>
+        <input type="number" id="node-input-loopDelay" min="0">
+    </div>
+    
+    <div class="form-row" style="margin-top: 20px;">
+        <label><i class="icon-list"></i> Scenario Steps</label>
+        <div style="margin: 10px 0;">
+            <button type="button" id="import-scenario">Import Scenario</button>
+            <button type="button" id="export-scenario">Export Scenario</button>
+        </div>
+        <div style="height: 300px; overflow-y: auto; border: 1px solid #ccc;">
+            <table id="scenario-steps-table" style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Step</th>
+                        <th>Action</th>
+                        <th>Target</th>
+                        <th>Value</th>
+                        <th>Duration</th>
+                        <th>Description</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <button type="button" id="add-step-button" style="margin-top: 10px;">Add Step</button>
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="pandaura-scenario-generator">
+    <p>A Node-RED node for generating and executing PandaUra test scenarios.</p>
+    
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>Scenario execution command: { action: "start" | "pause" | "stop" | "reset" }</dd>
+    </dl>
+    
+    <h3>Outputs</h3>
+    <ol class="node-ports">
+        <li><strong>Progress</strong>
+            <dl class="message-properties">
+                <dt>payload <span class="property-type">object</span></dt>
+                <dd>Step execution progress and status updates</dd>
+            </dl>
+        </li>
+        <li><strong>Complete</strong>
+            <dl class="message-properties">
+                <dt>payload <span class="property-type">object</span></dt>
+                <dd>Scenario completion status and summary</dd>
+            </dl>
+        </li>
+    </ol>
+    
+    <h3>Configuration</h3>
+    <p>Configure scenario steps with the following actions:</p>
+    <ul>
+        <li><strong>Set Variable:</strong> Update PLC variable value</li>
+        <li><strong>Wait Delay:</strong> Pause execution for specified duration</li>
+        <li><strong>Inject Fault:</strong> Apply fault injection to variables</li>
+        <li><strong>Checkpoint:</strong> Mark important points for validation</li>
+    </ul>
+    
+    <h3>Details</h3>
+    <p>This node enables visual design of test scenarios that can be executed against the PandaUra Shadow Runtime. 
+    Perfect for automated testing and validation scenarios.</p>
+</script>

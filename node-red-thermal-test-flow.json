@@ -1,0 +1,255 @@
+[
+  {
+    "id": "pandaura_flow_tab",
+    "type": "tab",
+    "label": "PandaUra Thermal Runaway Test",
+    "disabled": false,
+    "info": "Critical patch testing flow for thermal runaway prevention"
+  },
+  {
+    "id": "inject_trigger",
+    "type": "inject",
+    "z": "pandaura_flow_tab",
+    "name": "Start Fault Test",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "{\"action\":\"start\"}",
+    "payloadType": "json",
+    "x": 140,
+    "y": 200,
+    "wires": [
+      [
+        "fault_injector"
+      ]
+    ]
+  },
+  {
+    "id": "fault_injector",
+    "type": "pandaura-fault-injector",
+    "z": "pandaura_flow_tab",
+    "name": "Temperature Drift",
+    "pandauraHost": "localhost:8000",
+    "faultType": "VALUE_DRIFT",
+    "targetVariable": "Temp_Sensor",
+    "duration": "10000",
+    "parameters": {
+      "driftRate": "2.0",
+      "maxDrift": "15.0"
+    },
+    "x": 350,
+    "y": 200,
+    "wires": [
+      [
+        "status_debug"
+      ],
+      [
+        "error_debug"
+      ]
+    ]
+  },
+  {
+    "id": "tag_monitor",
+    "type": "pandaura-tag-monitor",
+    "z": "pandaura_flow_tab",
+    "name": "Monitor Temperature",
+    "pandauraHost": "localhost:8000",
+    "tagName": "Temp_Sensor",
+    "pollInterval": "1000",
+    "thresholdType": "range",
+    "minValue": "20",
+    "maxValue": "80",
+    "enableWebSocket": false,
+    "x": 160,
+    "y": 300,
+    "wires": [
+      [
+        "temp_display"
+      ],
+      [
+        "alert_display"
+      ]
+    ]
+  },
+  {
+    "id": "status_debug",
+    "type": "debug",
+    "z": "pandaura_flow_tab",
+    "name": "Fault Status",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 570,
+    "y": 180,
+    "wires": []
+  },
+  {
+    "id": "error_debug",
+    "type": "debug",
+    "z": "pandaura_flow_tab",
+    "name": "Fault Errors",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 570,
+    "y": 220,
+    "wires": []
+  },
+  {
+    "id": "temp_display",
+    "type": "debug",
+    "z": "pandaura_flow_tab",
+    "name": "Temperature Values",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 390,
+    "y": 280,
+    "wires": []
+  },
+  {
+    "id": "alert_display",
+    "type": "debug",
+    "z": "pandaura_flow_tab",
+    "name": "Temperature Alerts",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 390,
+    "y": 320,
+    "wires": []
+  },
+  {
+    "id": "scenario_generator",
+    "type": "pandaura-scenario-generator",
+    "z": "pandaura_flow_tab",
+    "name": "Thermal Test Scenario",
+    "pandauraHost": "localhost:8000",
+    "scenario": [
+      {
+        "step": 1,
+        "action": "setVariable",
+        "target": "Temp_Sensor",
+        "value": "45",
+        "description": "Set baseline temperature"
+      },
+      {
+        "step": 2,
+        "action": "waitDelay",
+        "duration": "2000",
+        "description": "Stabilize"
+      },
+      {
+        "step": 3,
+        "action": "injectFault",
+        "target": "Temp_Sensor",
+        "value": "VALUE_DRIFT",
+        "duration": "8000",
+        "description": "Simulate sensor drift"
+      },
+      {
+        "step": 4,
+        "action": "checkpoint",
+        "description": "Verify system response"
+      }
+    ],
+    "loopCount": 1,
+    "loopDelay": 5000,
+    "x": 180,
+    "y": 400,
+    "wires": [
+      [
+        "scenario_progress"
+      ],
+      [
+        "scenario_complete"
+      ]
+    ]
+  },
+  {
+    "id": "scenario_progress",
+    "type": "debug",
+    "z": "pandaura_flow_tab",
+    "name": "Scenario Progress",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 420,
+    "y": 380,
+    "wires": []
+  },
+  {
+    "id": "scenario_complete",
+    "type": "debug",
+    "z": "pandaura_flow_tab",
+    "name": "Scenario Complete",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 420,
+    "y": 420,
+    "wires": []
+  },
+  {
+    "id": "start_scenario",
+    "type": "inject",
+    "z": "pandaura_flow_tab",
+    "name": "Run Full Scenario",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "{\"action\":\"start\"}",
+    "payloadType": "json",
+    "x": 150,
+    "y": 460,
+    "wires": [
+      [
+        "scenario_generator"
+      ]
+    ]
+  }
+]

@@ -1,0 +1,219 @@
+<!-- PandaUra Tag Monitor Node Configuration -->
+<script type="text/javascript">
+    RED.nodes.registerType('pandaura-tag-monitor', {
+        category: 'PandaUra',
+        color: '#4A90E2',
+        defaults: {
+            name: { value: "" },
+            pandauraHost: { value: "localhost:8000" },
+            tagName: { value: "" },
+            pollInterval: { value: 1000 },
+            thresholdType: { value: "none" },
+            minValue: { value: 0 },
+            maxValue: { value: 100 },
+            enableWebSocket: { value: false }
+        },
+        inputs: 1,
+        outputs: 2,
+        outputLabels: ["normal", "alert"],
+        icon: "status.png",
+        label: function() {
+            return this.name || `Monitor: ${this.tagName}`;
+        },
+        labelStyle: function() {
+            return this.name ? "node_label_italic" : "";
+        },
+        oneditprepare: function() {
+            const node = this;
+            
+            // Update threshold fields based on threshold type
+            function updateThresholdFields() {
+                const thresholdType = $("#node-input-thresholdType").val();
+                const minRow = $("#min-value-row");
+                const maxRow = $("#max-value-row");
+                
+                switch (thresholdType) {
+                    case 'none':
+                        minRow.hide();
+                        maxRow.hide();
+                        break;
+                    case 'min':
+                        minRow.show();
+                        maxRow.hide();
+                        break;
+                    case 'max':
+                        minRow.hide();
+                        maxRow.show();
+                        break;
+                    case 'range':
+                        minRow.show();
+                        maxRow.show();
+                        break;
+                }
+            }
+            
+            $("#node-input-thresholdType").change(updateThresholdFields);
+            updateThresholdFields();
+            
+            // Test connection button
+            $("#test-connection").click(function() {
+                const host = $("#node-input-pandauraHost").val();
+                
+                $.get(`http://${host}/api/simulate/status`)
+                    .done(function() {
+                        RED.notify("Connection successful", "success");
+                    })
+                    .fail(function() {
+                        RED.notify("Connection failed", "error");
+                    });
+            });
+            
+            // Browse tags/variables
+            $("#browse-tags").click(function() {
+                const host = $("#node-input-pandauraHost").val();
+                
+                $.get(`http://${host}/api/simulate/variables`)
+                    .done(function(data) {
+                        if (data.success) {
+                            const variables = data.variables;
+                            let html = '<select id="tag-selector" style="width: 100%;">';
+                            variables.forEach(variable => {
+                                html += `<option value="${variable.name}">${variable.name} (${variable.type})</option>`;
+                            });
+                            html += '</select>';
+                            
+                            RED.notify({
+                                modal: true,
+                                type: "info",
+                                title: "Select Tag to Monitor",
+                                content: html,
+                                buttons: [
+                                    {
+                                        text: "Select",
+                                        click: function() {
+                                            const selected = $("#tag-selector").val();
+                                            $("#node-input-tagName").val(selected);
+                                            $(this).dialog("close");
+                                        }
+                                    },
+                                    {
+                                        text: "Cancel",
+                                        click: function() {
+                                            $(this).dialog("close");
+                                        }
+                                    }
+                                ]
+                            });
+                        }
+                    })
+                    .fail(function() {
+                        RED.notify("Failed to fetch tags", "error");
+                    });
+            });
+            
+            // Test tag value retrieval
+            $("#test-tag").click(function() {
+                const host = $("#node-input-pandauraHost").val();
+                const tagName = $("#node-input-tagName").val();
+                
+                if (!tagName) {
+                    RED.notify("Please specify a tag name", "warning");
+                    return;
+                }
+                
+                $.get(`http://${host}/api/simulate/get-variable/${tagName}`)
+                    .done(function(data) {
+                        if (data.success) {
+                            RED.notify(`Tag value: ${data.value}`, "success");
+                        } else {
+                            RED.notify(`Tag error: ${data.error}`, "error");
+                        }
+                    })
+                    .fail(function() {
+                        RED.notify("Failed to get tag value", "error");
+                    });
+            });
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="pandaura-tag-monitor">
+    <div class="form-row">
+        <label for="node-input-name"><i class="icon-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Tag Monitor">
+    </div>
+    <div class="form-row">
+        <label for="node-input-pandauraHost"><i class="icon-globe"></i> PandaUra Host</label>
+        <input type="text" id="node-input-pandauraHost" placeholder="localhost:8000">
+        <button type="button" id="test-connection" style="margin-left: 10px;">Test Connection</button>
+    </div>
+    <div class="form-row">
+        <label for="node-input-tagName"><i class="icon-tag"></i> Tag Name</label>
+        <input type="text" id="node-input-tagName" placeholder="PLC variable name">
+        <button type="button" id="browse-tags" style="margin-left: 5px;">Browse</button>
+        <button type="button" id="test-tag" style="margin-left: 5px;">Test</button>
+    </div>
+    <div class="form-row">
+        <label for="node-input-enableWebSocket"><i class="icon-flash"></i> Real-time (WebSocket)</label>
+        <input type="checkbox" id="node-input-enableWebSocket">
+    </div>
+    <div class="form-row">
+        <label for="node-input-pollInterval"><i class="icon-clock-o"></i> Poll Interval (ms)</label>
+        <input type="number" id="node-input-pollInterval" min="100" max="60000">
+    </div>
+    
+    <div class="form-row" style="margin-top: 20px;">
+        <label for="node-input-thresholdType"><i class="icon-exclamation-triangle"></i> Threshold Type</label>
+        <select id="node-input-thresholdType">
+            <option value="none">No Threshold</option>
+            <option value="min">Minimum Value</option>
+            <option value="max">Maximum Value</option>
+            <option value="range">Value Range</option>
+        </select>
+    </div>
+    <div class="form-row" id="min-value-row" style="display: none;">
+        <label for="node-input-minValue"><i class="icon-arrow-down"></i> Min Value</label>
+        <input type="number" id="node-input-minValue" step="any">
+    </div>
+    <div class="form-row" id="max-value-row" style="display: none;">
+        <label for="node-input-maxValue"><i class="icon-arrow-up"></i> Max Value</label>
+        <input type="number" id="node-input-maxValue" step="any">
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="pandaura-tag-monitor">
+    <p>A Node-RED node for monitoring PandaUra PLC variables in real-time.</p>
+    
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>Control commands: { action: "start" | "stop", tagName?: "variable_name" }</dd>
+    </dl>
+    
+    <h3>Outputs</h3>
+    <ol class="node-ports">
+        <li><strong>Normal</strong>
+            <dl class="message-properties">
+                <dt>payload <span class="property-type">object</span></dt>
+                <dd>Regular tag value updates: { tagName, value, timestamp }</dd>
+            </dl>
+        </li>
+        <li><strong>Alert</strong>
+            <dl class="message-properties">
+                <dt>payload <span class="property-type">object</span></dt>
+                <dd>Threshold violation alerts with alert details</dd>
+            </dl>
+        </li>
+    </ol>
+    
+    <h3>Monitoring Options</h3>
+    <ul>
+        <li><strong>HTTP Polling:</strong> Regular interval-based value checking</li>
+        <li><strong>WebSocket:</strong> Real-time push notifications (if supported)</li>
+        <li><strong>Thresholds:</strong> Configurable min/max value alerts</li>
+    </ul>
+    
+    <h3>Details</h3>
+    <p>This node provides continuous monitoring of PLC variables with configurable threshold alerts. 
+    Perfect for real-time system monitoring and automated test validation.</p>
+</script>

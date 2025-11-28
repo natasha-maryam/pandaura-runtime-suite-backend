@@ -17,6 +17,52 @@ class SimulatorEngine {
     this.executionInterval = null;
     this.cycleTime = 100; // ms
     this.compiledProgram = null; // ST interpreter compiled program
+    
+    // Hyper-Granular Simulation Features (BE-351)
+    this.hyperGranular = {
+      // I/O Latency Modeling
+      ioLatency: {
+        enabled: true,
+        defaultLatency: 2, // ms
+        jitterRange: 0.5, // ±0.5ms
+        ioQueue: new Map() // tag -> [{value, timestamp}]
+      },
+      
+      // Scan Cycle Simulation
+      scanCycle: {
+        enabled: true,
+        scanTimeMs: 10, // Default 10ms scan cycle
+        currentScanCount: 0,
+        lastScanStart: Date.now(),
+        actualScanTime: 0
+      },
+      
+      // Logic Load & Compute Quota
+      computeQuota: {
+        enabled: true,
+        watchdogLimit: 50, // ms max execution per scan
+        currentLoad: 0,
+        routineCosts: new Map(), // routine -> execution cost
+        faultEvents: []
+      },
+      
+      // Data Type Overflow Modeling
+      overflowModeling: {
+        enabled: true,
+        intMin: -32768,
+        intMax: 32767,
+        dintMin: -2147483648,
+        dintMax: 2147483647,
+        overflowExceptions: []
+      }
+    };
+    
+    // Fault Injection State (BE-352)
+    this.faultInjection = {
+      activeFaults: new Map(), // tag -> fault config
+      faultHistory: [],
+      driftStates: new Map() // tag -> drift state
+    };
   }
 
   /**
@@ -39,6 +85,9 @@ class SimulatorEngine {
       this.state.executionMode = 'interpreter';
 
       this.addLog(`Compiling ST code...`, 'info');
+      
+      // Initialize hyper-granular simulation settings
+      this.initializeHyperGranularSimulation(options);
 
       // Compile the ST code using the interpreter
       try {
@@ -224,11 +273,20 @@ class SimulatorEngine {
    * Start execution loop
    */
   startExecutionLoop() {
+    // Use hyper-granular scan cycle if enabled
+    const scanInterval = this.hyperGranular.scanCycle.enabled ? 
+      this.hyperGranular.scanCycle.scanTimeMs : this.cycleTime;
+    
     this.executionInterval = setInterval(() => {
       if (!this.state.isPaused && this.state.isRunning && this.compiledProgram) {
         try {
-          // Execute one cycle
-          this.compiledProgram.step();
+          if (this.hyperGranular.scanCycle.enabled) {
+            // Use hyper-granular scan cycle execution
+            this.executeHyperGranularScanCycle();
+          } else {
+            // Legacy execution mode
+            this.compiledProgram.step();
+          }
           
           // Sync variables from runtime to state
           this.syncVariablesFromRuntime();
@@ -241,7 +299,7 @@ class SimulatorEngine {
           this.stop();
         }
       }
-    }, this.cycleTime);
+    }, scanInterval);
   }
 
   /**
@@ -427,6 +485,396 @@ class SimulatorEngine {
     if (this.state.logs.length > 100) {
       this.state.logs = this.state.logs.slice(-100);
     }
+  }
+
+  // ============== HYPER-GRANULAR SIMULATION METHODS (BE-351) ==============
+
+  /**
+   * Initialize hyper-granular simulation settings
+   */
+  initializeHyperGranularSimulation(options = {}) {
+    const { hyperGranular = {} } = options;
+    
+    // Configure I/O Latency
+    if (hyperGranular.ioLatency) {
+      Object.assign(this.hyperGranular.ioLatency, hyperGranular.ioLatency);
+    }
+    
+    // Configure Scan Cycle
+    if (hyperGranular.scanCycle) {
+      Object.assign(this.hyperGranular.scanCycle, hyperGranular.scanCycle);
+    }
+    
+    // Configure Compute Quota
+    if (hyperGranular.computeQuota) {
+      Object.assign(this.hyperGranular.computeQuota, hyperGranular.computeQuota);
+    }
+    
+    // Configure Overflow Modeling
+    if (hyperGranular.overflowModeling) {
+      Object.assign(this.hyperGranular.overflowModeling, hyperGranular.overflowModeling);
+    }
+    
+    this.addLog(`Hyper-granular simulation initialized: Scan=${this.hyperGranular.scanCycle.scanTimeMs}ms, I/O Latency=${this.hyperGranular.ioLatency.defaultLatency}ms`, 'info');
+  }
+
+  /**
+   * Execute a single scan cycle with hyper-granular timing
+   */
+  executeHyperGranularScanCycle() {
+    if (!this.compiledProgram || this.state.isPaused) return;
+    
+    const scanStart = Date.now();
+    this.hyperGranular.scanCycle.lastScanStart = scanStart;
+    this.hyperGranular.scanCycle.currentScanCount++;
+    
+    try {
+      // Add ScanTime_ms system variable accessible in ST logic
+      this.compiledProgram.runtime.setVarValue('ScanTime_ms', this.hyperGranular.scanCycle.scanTimeMs);
+      this.compiledProgram.runtime.setVarValue('ScanCount', this.hyperGranular.scanCycle.currentScanCount);
+      
+      // Process I/O latency queue before execution
+      this.processIOLatencyQueue();
+      
+      // Apply active fault injections
+      this.applyFaultInjections();
+      
+      // Check compute quota before execution
+      const executionStart = performance.now();
+      
+      // Execute one scan cycle
+      this.compiledProgram.step();
+      
+      // Calculate execution time and check watchdog
+      const executionTime = performance.now() - executionStart;
+      this.hyperGranular.computeQuota.currentLoad = executionTime;
+      
+      if (this.hyperGranular.computeQuota.enabled && 
+          executionTime > this.hyperGranular.computeQuota.watchdogLimit) {
+        this.triggerWatchdogFault(executionTime);
+      }
+      
+      // Update variables with overflow checking
+      this.updateVariablesWithOverflowCheck();
+      
+      // Calculate actual scan time
+      const scanEnd = Date.now();
+      this.hyperGranular.scanCycle.actualScanTime = scanEnd - scanStart;
+      
+      // Queue I/O outputs with latency
+      this.queueIOOutputsWithLatency();
+      
+    } catch (error) {
+      this.addLog(`Scan cycle error: ${error.message}`, 'error');
+    }
+  }
+
+  /**
+   * Process I/O latency queue - simulate delayed I/O reads
+   */
+  processIOLatencyQueue() {
+    if (!this.hyperGranular.ioLatency.enabled) return;
+    
+    const currentTime = Date.now();
+    
+    this.hyperGranular.ioLatency.ioQueue.forEach((queue, tagName) => {
+      // Process queued values that have passed their latency delay
+      const readyValues = queue.filter(item => 
+        currentTime >= item.timestamp + this.calculateIOLatency()
+      );
+      
+      if (readyValues.length > 0) {
+        // Apply the most recent ready value
+        const latestValue = readyValues[readyValues.length - 1];
+        if (this.compiledProgram && this.compiledProgram.runtime.hasVar(tagName)) {
+          this.compiledProgram.runtime.setVarValue(tagName, latestValue.value);
+        }
+        
+        // Remove processed values from queue
+        this.hyperGranular.ioLatency.ioQueue.set(tagName, 
+          queue.filter(item => !readyValues.includes(item))
+        );
+      }
+    });
+  }
+
+  /**
+   * Calculate I/O latency with jitter
+   */
+  calculateIOLatency() {
+    const baseLatency = this.hyperGranular.ioLatency.defaultLatency;
+    const jitter = (Math.random() - 0.5) * 2 * this.hyperGranular.ioLatency.jitterRange;
+    return Math.max(0, baseLatency + jitter);
+  }
+
+  /**
+   * Queue I/O outputs with latency simulation
+   */
+  queueIOOutputsWithLatency() {
+    if (!this.hyperGranular.ioLatency.enabled || !this.compiledProgram) return;
+    
+    // Get all current variable values
+    const vars = this.compiledProgram.getVars();
+    
+    Object.entries(vars).forEach(([name, value]) => {
+      // Check if this is an output tag (by convention, starts with 'Output' or ends with '_OUT')
+      if (name.startsWith('Output') || name.endsWith('_OUT') || name.includes('OUTPUT')) {
+        // Queue the value with latency
+        if (!this.hyperGranular.ioLatency.ioQueue.has(name)) {
+          this.hyperGranular.ioLatency.ioQueue.set(name, []);
+        }
+        
+        this.hyperGranular.ioLatency.ioQueue.get(name).push({
+          value,
+          timestamp: Date.now()
+        });
+      }
+    });
+  }
+
+  /**
+   * Update variables with data type overflow checking
+   */
+  updateVariablesWithOverflowCheck() {
+    if (!this.hyperGranular.overflowModeling.enabled || !this.compiledProgram) return;
+    
+    const vars = this.compiledProgram.getVars();
+    
+    Object.entries(vars).forEach(([name, value]) => {
+      if (typeof value === 'number') {
+        let overflowValue = value;
+        let overflowDetected = false;
+        
+        // Check INT overflow (assume INT type for integer values in typical range)
+        if (Number.isInteger(value)) {
+          if (value > this.hyperGranular.overflowModeling.intMax) {
+            overflowValue = this.hyperGranular.overflowModeling.intMin + 
+                           (value - this.hyperGranular.overflowModeling.intMax - 1);
+            overflowDetected = true;
+          } else if (value < this.hyperGranular.overflowModeling.intMin) {
+            overflowValue = this.hyperGranular.overflowModeling.intMax - 
+                           (this.hyperGranular.overflowModeling.intMin - value - 1);
+            overflowDetected = true;
+          }
+        }
+        
+        if (overflowDetected) {
+          this.hyperGranular.overflowModeling.overflowExceptions.push({
+            variable: name,
+            originalValue: value,
+            overflowValue,
+            timestamp: Date.now(),
+            type: 'INT_OVERFLOW'
+          });
+          
+          // Update the variable with wrapped value
+          this.compiledProgram.runtime.setVarValue(name, overflowValue);
+          this.addLog(`INT overflow in ${name}: ${value} → ${overflowValue}`, 'warning');
+        }
+      }
+    });
+  }
+
+  /**
+   * Trigger watchdog fault event
+   */
+  triggerWatchdogFault(executionTime) {
+    const faultEvent = {
+      type: 'WATCHDOG_TIMEOUT',
+      executionTime,
+      limit: this.hyperGranular.computeQuota.watchdogLimit,
+      timestamp: Date.now(),
+      scanCount: this.hyperGranular.scanCycle.currentScanCount
+    };
+    
+    this.hyperGranular.computeQuota.faultEvents.push(faultEvent);
+    this.addLog(`Watchdog timeout: ${executionTime.toFixed(2)}ms > ${this.hyperGranular.computeQuota.watchdogLimit}ms`, 'error');
+    
+    // In a real PLC, this would stop execution. For simulation, we log and continue.
+  }
+
+  // ============== FAULT INJECTION API (BE-352) ==============
+
+  /**
+   * Inject a fault into the simulation
+   */
+  injectFault(faultConfig) {
+    const { target, fault_type, parameter, duration_ms = 60000 } = faultConfig;
+    
+    const fault = {
+      id: `fault_${Date.now()}`,
+      target,
+      type: fault_type,
+      parameter,
+      duration: duration_ms,
+      startTime: Date.now(),
+      endTime: Date.now() + duration_ms,
+      active: true
+    };
+    
+    this.faultInjection.activeFaults.set(target, fault);
+    this.faultInjection.faultHistory.push(fault);
+    
+    // Initialize fault-specific state
+    switch (fault_type) {
+      case 'VALUE_DRIFT':
+        this.faultInjection.driftStates.set(target, {
+          originalValue: this.getVariableValue(target),
+          driftRate: parameter, // per second
+          startValue: this.getVariableValue(target),
+          lastUpdate: Date.now()
+        });
+        break;
+        
+      case 'LOCK_VALUE':
+        this.faultInjection.driftStates.set(target, {
+          lockedValue: this.getVariableValue(target)
+        });
+        break;
+        
+      case 'FORCE_IO_ERROR':
+        // Set IO error bit for the target
+        const errorBitName = `${target}_ERROR`;
+        if (this.compiledProgram && this.compiledProgram.runtime.hasVar(errorBitName)) {
+          this.compiledProgram.runtime.setVarValue(errorBitName, true);
+        }
+        break;
+    }
+    
+    this.addLog(`Fault injected: ${fault_type} on ${target} (duration: ${duration_ms}ms)`, 'warning');
+    
+    return {
+      success: true,
+      faultId: fault.id,
+      message: `Fault ${fault_type} injected on ${target}`
+    };
+  }
+
+  /**
+   * Apply active fault injections during each scan cycle
+   */
+  applyFaultInjections() {
+    const currentTime = Date.now();
+    
+    this.faultInjection.activeFaults.forEach((fault, target) => {
+      if (currentTime > fault.endTime) {
+        // Fault duration expired
+        this.removeFault(target);
+        return;
+      }
+      
+      if (!this.compiledProgram || !this.compiledProgram.runtime.hasVar(target)) {
+        return;
+      }
+      
+      switch (fault.type) {
+        case 'VALUE_DRIFT':
+          this.applyValueDrift(target, fault);
+          break;
+          
+        case 'LOCK_VALUE':
+          this.applyValueLock(target, fault);
+          break;
+          
+        case 'FORCE_IO_ERROR':
+          // IO error is persistent until fault expires
+          break;
+      }
+    });
+  }
+
+  /**
+   * Apply value drift fault
+   */
+  applyValueDrift(target, fault) {
+    const driftState = this.faultInjection.driftStates.get(target);
+    if (!driftState) return;
+    
+    const currentTime = Date.now();
+    const timeDelta = (currentTime - driftState.lastUpdate) / 1000; // seconds
+    
+    const currentValue = this.getVariableValue(target);
+    const driftAmount = fault.parameter * timeDelta;
+    const newValue = currentValue + driftAmount;
+    
+    this.compiledProgram.runtime.setVarValue(target, newValue);
+    
+    driftState.lastUpdate = currentTime;
+    this.faultInjection.driftStates.set(target, driftState);
+  }
+
+  /**
+   * Apply value lock fault
+   */
+  applyValueLock(target, fault) {
+    const driftState = this.faultInjection.driftStates.get(target);
+    if (!driftState) return;
+    
+    // Keep the value locked to the initial locked value
+    this.compiledProgram.runtime.setVarValue(target, driftState.lockedValue);
+  }
+
+  /**
+   * Remove a fault
+   */
+  removeFault(target) {
+    const fault = this.faultInjection.activeFaults.get(target);
+    if (fault) {
+      fault.active = false;
+      this.faultInjection.activeFaults.delete(target);
+      this.faultInjection.driftStates.delete(target);
+      
+      // Clear IO error bit if applicable
+      if (fault.type === 'FORCE_IO_ERROR') {
+        const errorBitName = `${target}_ERROR`;
+        if (this.compiledProgram && this.compiledProgram.runtime.hasVar(errorBitName)) {
+          this.compiledProgram.runtime.setVarValue(errorBitName, false);
+        }
+      }
+      
+      this.addLog(`Fault ${fault.type} on ${target} expired`, 'info');
+    }
+  }
+
+  /**
+   * Get current variable value safely
+   */
+  getVariableValue(name) {
+    if (this.compiledProgram && this.compiledProgram.runtime.hasVar(name)) {
+      return this.compiledProgram.runtime.getVarValue(name);
+    }
+    return 0;
+  }
+
+  /**
+   * Get hyper-granular simulation status
+   */
+  getHyperGranularStatus() {
+    return {
+      scanCycle: {
+        scanTimeMs: this.hyperGranular.scanCycle.scanTimeMs,
+        currentScanCount: this.hyperGranular.scanCycle.currentScanCount,
+        actualScanTime: this.hyperGranular.scanCycle.actualScanTime
+      },
+      ioLatency: {
+        enabled: this.hyperGranular.ioLatency.enabled,
+        defaultLatency: this.hyperGranular.ioLatency.defaultLatency,
+        queuedItems: Array.from(this.hyperGranular.ioLatency.ioQueue.entries()).map(([tag, queue]) => ({
+          tag,
+          queueSize: queue.length
+        }))
+      },
+      computeQuota: {
+        currentLoad: this.hyperGranular.computeQuota.currentLoad,
+        watchdogLimit: this.hyperGranular.computeQuota.watchdogLimit,
+        faultEventCount: this.hyperGranular.computeQuota.faultEvents.length
+      },
+      overflowModeling: {
+        enabled: this.hyperGranular.overflowModeling.enabled,
+        exceptionCount: this.hyperGranular.overflowModeling.overflowExceptions.length
+      },
+      activeFaults: Array.from(this.faultInjection.activeFaults.values())
+    };
   }
 }
 

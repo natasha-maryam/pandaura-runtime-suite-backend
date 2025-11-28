@@ -1,0 +1,231 @@
+<!-- PandaUra Fault Injector Node Configuration -->
+<script type="text/javascript">
+    RED.nodes.registerType('pandaura-fault-injector', {
+        category: 'PandaUra',
+        color: '#FF6B6B',
+        defaults: {
+            name: { value: "" },
+            pandauraHost: { value: "localhost:8000" },
+            faultType: { value: "VALUE_DRIFT" },
+            targetVariable: { value: "" },
+            duration: { value: 5000 },
+            parameters: { value: {} }
+        },
+        inputs: 1,
+        outputs: 2,
+        outputLabels: ["status", "error"],
+        icon: "alert.png",
+        label: function() {
+            return this.name || `Fault: ${this.faultType}`;
+        },
+        labelStyle: function() {
+            return this.name ? "node_label_italic" : "";
+        },
+        oneditprepare: function() {
+            const node = this;
+            
+            // Update parameter fields based on fault type
+            function updateParameterFields() {
+                const faultType = $("#node-input-faultType").val();
+                const parametersDiv = $("#fault-parameters");
+                
+                parametersDiv.empty();
+                
+                switch (faultType) {
+                    case 'VALUE_DRIFT':
+                        parametersDiv.append(`
+                            <div class="form-row">
+                                <label for="param-driftRate">Drift Rate</label>
+                                <input type="number" id="param-driftRate" step="0.1" placeholder="1.0">
+                            </div>
+                            <div class="form-row">
+                                <label for="param-maxDrift">Max Drift</label>
+                                <input type="number" id="param-maxDrift" step="0.1" placeholder="10.0">
+                            </div>
+                        `);
+                        break;
+                        
+                    case 'LOCK_VALUE':
+                        parametersDiv.append(`
+                            <div class="form-row">
+                                <label for="param-lockValue">Lock Value</label>
+                                <input type="text" id="param-lockValue" placeholder="42">
+                            </div>
+                        `);
+                        break;
+                        
+                    case 'FORCE_IO_ERROR':
+                        parametersDiv.append(`
+                            <div class="form-row">
+                                <label for="param-errorType">Error Type</label>
+                                <select id="param-errorType">
+                                    <option value="timeout">Timeout</option>
+                                    <option value="corruption">Data Corruption</option>
+                                    <option value="disconnect">Connection Lost</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label for="param-errorRate">Error Rate (%)</label>
+                                <input type="number" id="param-errorRate" min="0" max="100" value="10">
+                            </div>
+                        `);
+                        break;
+                }
+                
+                // Load existing parameters
+                if (node.parameters) {
+                    Object.keys(node.parameters).forEach(key => {
+                        const input = $(`#param-${key}`);
+                        if (input.length) {
+                            input.val(node.parameters[key]);
+                        }
+                    });
+                }
+            }
+            
+            $("#node-input-faultType").change(updateParameterFields);
+            updateParameterFields();
+            
+            // Test connection button
+            $("#test-connection").click(function() {
+                const host = $("#node-input-pandauraHost").val();
+                
+                $.get(`http://${host}/api/simulate/status`)
+                    .done(function() {
+                        RED.notify("Connection successful", "success");
+                    })
+                    .fail(function() {
+                        RED.notify("Connection failed", "error");
+                    });
+            });
+            
+            // Variable browser
+            $("#browse-variables").click(function() {
+                const host = $("#node-input-pandauraHost").val();
+                
+                $.get(`http://${host}/api/simulate/variables`)
+                    .done(function(data) {
+                        if (data.success) {
+                            const variables = data.variables;
+                            let html = '<select id="variable-selector" style="width: 100%;">';
+                            variables.forEach(variable => {
+                                html += `<option value="${variable.name}">${variable.name} (${variable.type})</option>`;
+                            });
+                            html += '</select>';
+                            
+                            RED.notify({
+                                modal: true,
+                                type: "info",
+                                title: "Select Variable",
+                                content: html,
+                                buttons: [
+                                    {
+                                        text: "Select",
+                                        click: function() {
+                                            const selected = $("#variable-selector").val();
+                                            $("#node-input-targetVariable").val(selected);
+                                            $(this).dialog("close");
+                                        }
+                                    },
+                                    {
+                                        text: "Cancel",
+                                        click: function() {
+                                            $(this).dialog("close");
+                                        }
+                                    }
+                                ]
+                            });
+                        }
+                    })
+                    .fail(function() {
+                        RED.notify("Failed to fetch variables", "error");
+                    });
+            });
+        },
+        oneditsave: function() {
+            // Save parameters
+            const parameters = {};
+            $("#fault-parameters input, #fault-parameters select").each(function() {
+                const id = $(this).attr('id');
+                if (id && id.startsWith('param-')) {
+                    const key = id.substring(6); // Remove 'param-' prefix
+                    parameters[key] = $(this).val();
+                }
+            });
+            this.parameters = parameters;
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="pandaura-fault-injector">
+    <div class="form-row">
+        <label for="node-input-name"><i class="icon-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Fault Injector">
+    </div>
+    <div class="form-row">
+        <label for="node-input-pandauraHost"><i class="icon-globe"></i> PandaUra Host</label>
+        <input type="text" id="node-input-pandauraHost" placeholder="localhost:8000">
+        <button type="button" id="test-connection" style="margin-left: 10px;">Test Connection</button>
+    </div>
+    <div class="form-row">
+        <label for="node-input-faultType"><i class="icon-exclamation-triangle"></i> Fault Type</label>
+        <select id="node-input-faultType">
+            <option value="VALUE_DRIFT">Value Drift</option>
+            <option value="LOCK_VALUE">Lock Value</option>
+            <option value="FORCE_IO_ERROR">Force I/O Error</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="node-input-targetVariable"><i class="icon-tag"></i> Target Variable</label>
+        <input type="text" id="node-input-targetVariable" placeholder="Variable name">
+        <button type="button" id="browse-variables" style="margin-left: 10px;">Browse</button>
+    </div>
+    <div class="form-row">
+        <label for="node-input-duration"><i class="icon-clock-o"></i> Duration (ms)</label>
+        <input type="number" id="node-input-duration" min="1000" placeholder="5000">
+    </div>
+    
+    <div class="form-row" style="margin-top: 20px;">
+        <label><i class="icon-cog"></i> Fault Parameters</label>
+        <div id="fault-parameters" style="margin-top: 10px;">
+            <!-- Dynamic parameters based on fault type -->
+        </div>
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="pandaura-fault-injector">
+    <p>A Node-RED node for injecting faults into PandaUra Shadow Runtime variables.</p>
+    
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>Fault injection command with optional overrides for target, duration, and parameters</dd>
+    </dl>
+    
+    <h3>Outputs</h3>
+    <ol class="node-ports">
+        <li><strong>Status</strong>
+            <dl class="message-properties">
+                <dt>payload <span class="property-type">object</span></dt>
+                <dd>Fault injection status and progress updates</dd>
+            </dl>
+        </li>
+        <li><strong>Error</strong>
+            <dl class="message-properties">
+                <dt>payload <span class="property-type">object</span></dt>
+                <dd>Error information if fault injection fails</dd>
+            </dl>
+        </li>
+    </ol>
+    
+    <h3>Fault Types</h3>
+    <ul>
+        <li><strong>VALUE_DRIFT:</strong> Gradually drift variable value over time</li>
+        <li><strong>LOCK_VALUE:</strong> Lock variable to a specific value</li>
+        <li><strong>FORCE_IO_ERROR:</strong> Simulate I/O communication errors</li>
+    </ul>
+    
+    <h3>Details</h3>
+    <p>This node enables precise fault injection for testing system resilience and error handling. 
+    Faults can be triggered manually or as part of automated test scenarios.</p>
+</script>

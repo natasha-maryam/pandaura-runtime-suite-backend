@@ -313,6 +313,184 @@ router.post('/', async (req, res) => {
   }
 });
 
+// ============== FAULT INJECTION API (BE-352) ==============
 
+// POST /simulate/inject-fault - Inject fault into simulation
+router.post('/inject-fault', async (req, res) => {
+  try {
+    const { run_id, time_ms, action, target, fault_type, parameter, duration_ms } = req.body;
+    
+    console.log('🚨 FAULT INJECTION REQUEST:', {
+      run_id,
+      time_ms,
+      action,
+      target,
+      fault_type,
+      parameter,
+      duration_ms
+    });
+    
+    // Validate required fields
+    if (!target || !fault_type) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: target and fault_type'
+      });
+    }
+    
+    // Validate fault type
+    const validFaultTypes = ['VALUE_DRIFT', 'LOCK_VALUE', 'FORCE_IO_ERROR'];
+    if (!validFaultTypes.includes(fault_type)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid fault_type. Must be one of: ${validFaultTypes.join(', ')}`
+      });
+    }
+    
+    // Check if simulator is running
+    const state = simulatorEngine.getState();
+    if (!state.isRunning) {
+      return res.status(400).json({
+        success: false,
+        error: 'Simulator is not running. Start simulation first.'
+      });
+    }
+    
+    // Schedule fault injection after specified time
+    if (time_ms && time_ms > 0) {
+      setTimeout(() => {
+        const result = simulatorEngine.injectFault({
+          target,
+          fault_type,
+          parameter: parameter || 0,
+          duration_ms: duration_ms || 60000
+        });
+        console.log('⏰ Scheduled fault injection executed:', result);
+      }, time_ms);
+      
+      res.json({
+        success: true,
+        message: `Fault ${fault_type} scheduled for ${target} in ${time_ms}ms`,
+        scheduled: true,
+        run_id
+      });
+    } else {
+      // Inject fault immediately
+      const result = simulatorEngine.injectFault({
+        target,
+        fault_type,
+        parameter: parameter || 0,
+        duration_ms: duration_ms || 60000
+      });
+      
+      res.json({
+        success: result.success,
+        message: result.message,
+        faultId: result.faultId,
+        run_id,
+        scheduled: false
+      });
+    }
+    
+  } catch (error) {
+    console.error('Fault injection error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET /simulate/faults - Get active faults and fault history
+router.get('/faults', (req, res) => {
+  try {
+    const hyperStatus = simulatorEngine.getHyperGranularStatus();
+    
+    res.json({
+      success: true,
+      activeFaults: hyperStatus.activeFaults,
+      faultHistory: simulatorEngine.faultInjection ? simulatorEngine.faultInjection.faultHistory : [],
+      driftStates: simulatorEngine.faultInjection ? 
+        Array.from(simulatorEngine.faultInjection.driftStates.entries()) : []
+    });
+    
+  } catch (error) {
+    console.error('Get faults error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// DELETE /simulate/faults/:target - Remove specific fault
+router.delete('/faults/:target', (req, res) => {
+  try {
+    const { target } = req.params;
+    
+    simulatorEngine.removeFault(target);
+    
+    res.json({
+      success: true,
+      message: `Fault removed from ${target}`
+    });
+    
+  } catch (error) {
+    console.error('Remove fault error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// GET /simulate/hyper-granular-status - Get hyper-granular simulation status
+router.get('/hyper-granular-status', (req, res) => {
+  try {
+    const status = simulatorEngine.getHyperGranularStatus();
+    
+    res.json({
+      success: true,
+      ...status
+    });
+    
+  } catch (error) {
+    console.error('Get hyper-granular status error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// POST /simulate/configure-hyper-granular - Configure hyper-granular settings
+router.post('/configure-hyper-granular', (req, res) => {
+  try {
+    const { hyperGranular } = req.body;
+    
+    if (!hyperGranular) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing hyperGranular configuration'
+      });
+    }
+    
+    // Apply configuration to the simulator
+    simulatorEngine.initializeHyperGranularSimulation({ hyperGranular });
+    
+    res.json({
+      success: true,
+      message: 'Hyper-granular simulation configured',
+      configuration: simulatorEngine.getHyperGranularStatus()
+    });
+    
+  } catch (error) {
+    console.error('Configure hyper-granular error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 module.exports = router;

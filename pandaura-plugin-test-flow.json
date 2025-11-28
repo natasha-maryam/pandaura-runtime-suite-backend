@@ -1,0 +1,57 @@
+[
+  {
+    "id": "test_flow_tab",
+    "type": "tab", 
+    "label": "PandaUra Plugin Test",
+    "disabled": false,
+    "info": "Quick test of PandaUra Node-RED plugins"
+  },
+  {
+    "id": "test_inject",
+    "type": "inject",
+    "z": "test_flow_tab",
+    "name": "Test PandaUra Connection",
+    "props": [{"p": "payload"}],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "{}",
+    "payloadType": "json",
+    "x": 160,
+    "y": 100,
+    "wires": [["runtime_connect"]]
+  },
+  {
+    "id": "runtime_connect", 
+    "type": "pandaura-runtime-connect",
+    "z": "test_flow_tab",
+    "name": "PandaUra Connection",
+    "pandauraHost": "localhost:8000",
+    "connectionType": "http",
+    "authToken": "",
+    "autoReconnect": true,
+    "heartbeatInterval": 30000,
+    "x": 380,
+    "y": 100,
+    "wires": [["debug_output"]]
+  },
+  {
+    "id": "debug_output",
+    "type": "debug",
+    "z": "test_flow_tab", 
+    "name": "Connection Status",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 600,
+    "y": 100,
+    "wires": []
+  }
+]

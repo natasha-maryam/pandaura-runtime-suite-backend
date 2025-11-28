@@ -1,0 +1,158 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "PandaUra Thermal Runaway Monitor",
+    "tags": ["pandaura", "thermal", "safety"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Reactor Temperature",
+        "type": "timeseries",
+        "targets": [
+          {
+            "target": "Temp_Sensor",
+            "refId": "A"
+          }
+        ],
+        "unit": "celsius",
+        "min": 0,
+        "max": 100,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "unit": "celsius",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 60},
+                {"color": "red", "value": 80}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Tank Level",
+        "type": "timeseries",
+        "targets": [
+          {
+            "target": "Tank_Level", 
+            "refId": "B"
+          }
+        ],
+        "unit": "percent",
+        "min": 0,
+        "max": 100,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 20},
+                {"color": "green", "value": 40}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "System Status",
+        "type": "stat",
+        "targets": [
+          {
+            "target": "Temp_Sensor",
+            "refId": "C"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8},
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {
+                "options": {
+                  "from": 0,
+                  "to": 60
+                },
+                "result": {
+                  "text": "NORMAL",
+                  "color": "green"
+                },
+                "type": "range"
+              },
+              {
+                "options": {
+                  "from": 60,
+                  "to": 80
+                },
+                "result": {
+                  "text": "WARNING", 
+                  "color": "yellow"
+                },
+                "type": "range"
+              },
+              {
+                "options": {
+                  "from": 80,
+                  "to": 100
+                },
+                "result": {
+                  "text": "CRITICAL",
+                  "color": "red"
+                },
+                "type": "range"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Pump Speed",
+        "type": "gauge",
+        "targets": [
+          {
+            "target": "Pump_Speed",
+            "refId": "D"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 8},
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 70},
+                {"color": "red", "value": 90}
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "time": {
+      "from": "now-5m",
+      "to": "now"
+    },
+    "refresh": "1s",
+    "schemaVersion": 27,
+    "version": 1
+  }
+}

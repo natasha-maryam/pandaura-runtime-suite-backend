@@ -1,0 +1,41 @@
+{
+  "name": "@pandaura/node-red-scenario-generator",
+  "version": "1.0.0",
+  "description": "Node-RED plugin for PandaUra Simulator scenario generation and fault injection",
+  "main": "pandaura-scenario-generator.js",
+  "node-red": {
+    "version": ">=3.0.0",
+    "nodes": {
+      "pandaura-scenario-generator": "pandaura-scenario-generator.js",
+      "pandaura-fault-injector": "pandaura-fault-injector.js",
+      "pandaura-tag-monitor": "pandaura-tag-monitor.js",
+      "pandaura-runtime-connect": "pandaura-runtime-connect.js"
+    }
+  },
+  "keywords": [
+    "node-red",
+    "pandaura",
+    "plc",
+    "simulation",
+    "fault-injection",
+    "scenario-testing",
+    "industrial-automation"
+  ],
+  "author": "PandaUra Development Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pandaura/node-red-scenario-generator"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "ws": "^8.14.0",
+    "mqtt": "^5.0.0"
+  },
+  "peerDependencies": {
+    "node-red": ">=3.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

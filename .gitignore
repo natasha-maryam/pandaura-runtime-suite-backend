@@ -1,3 +1,4 @@
 /node_modules/.bin
 /node_modules
 .env
+/pandaura-data-bridge/node_modules
