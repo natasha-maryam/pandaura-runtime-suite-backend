@@ -11,15 +11,45 @@ class TagModel {
         .select('*')
         .orderBy('name');
       
-      // Parse metadata JSON
-      return tags.map(tag => ({
-        ...tag,
-        metadata: tag.metadata ? JSON.parse(tag.metadata) : null,
-        last_update: new Date(tag.last_update)
-      }));
+      // Parse metadata JSON and convert to camelCase
+      return tags.map(tag => this.convertTagToResponse(tag));
     } catch (error) {
       throw new Error(`Failed to fetch tags: ${error.message}`);
     }
+  }
+
+  convertTagToResponse(tag) {
+    return {
+      id: tag.id,
+      name: tag.name,
+      type: tag.type,
+      value: tag.value,
+      address: tag.address,
+      lastUpdate: new Date(tag.last_update),
+      persist: tag.persist,
+      source: tag.source,
+      metadata: tag.metadata ? JSON.parse(tag.metadata) : null,
+      projectId: tag.project_id,
+      scope: tag.scope,
+      scopeLocked: tag.scope_locked,
+      lifecycle: tag.lifecycle,
+      readOnly: tag.read_only,
+      requiresApproval: tag.requires_approval,
+      udtType: tag.udt_type,
+      hierarchyPath: tag.hierarchy_path,
+      area: tag.area,
+      equipment: tag.equipment,
+      routine: tag.routine,
+      vendor: tag.vendor,
+      imported: tag.imported,
+      version: tag.version,
+      allowedRoles: tag.allowed_roles ? JSON.parse(tag.allowed_roles) : null,
+      alarmThresholds: {
+        low: tag.alarm_low,
+        high: tag.alarm_high,
+        critical: tag.alarm_critical
+      }
+    };
   }
 
   async getById(id) {
@@ -32,18 +62,33 @@ class TagModel {
         throw new Error('Tag not found');
       }
       
-      return {
-        ...tag,
-        metadata: tag.metadata ? JSON.parse(tag.metadata) : null,
-        last_update: new Date(tag.last_update)
-      };
+      return this.convertTagToResponse(tag);
     } catch (error) {
       throw new Error(`Failed to fetch tag: ${error.message}`);
     }
   }
 
   async create(data) {
-    const { name, type, value, address, source = 'shadow', metadata, project_id } = data;
+    const { 
+      name, 
+      type, 
+      value, 
+      address, 
+      source = 'shadow', 
+      metadata, 
+      project_id,
+      scope,
+      scopeLocked,
+      lifecycle,
+      readOnly,
+      requiresApproval,
+      udtType,
+      hierarchyPath,
+      area,
+      equipment,
+      routine,
+      vendor
+    } = data;
     
     if (!name || !type) {
       throw new Error('Name and type are required');
@@ -61,15 +106,22 @@ class TagModel {
         last_update: new Date().toISOString(),
         source,
         metadata: metadata ? JSON.stringify(metadata) : null,
-        project_id: project_id || null
+        project_id: project_id || null,
+        scope: scope || 'global',
+        scope_locked: scopeLocked || false,
+        lifecycle: lifecycle || 'active',
+        read_only: readOnly || false,
+        requires_approval: requiresApproval || false,
+        udt_type: udtType || null,
+        hierarchy_path: hierarchyPath || null,
+        area: area || null,
+        equipment: equipment || null,
+        routine: routine || null,
+        vendor: vendor || null
       };
       
       await this.db('tags').insert(newTag);
-      return {
-        ...newTag,
-        metadata: newTag.metadata ? JSON.parse(newTag.metadata) : null,
-        last_update: new Date(newTag.last_update)
-      };
+      return this.convertTagToResponse(newTag);
     } catch (error) {
       if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
         throw new Error('A tag with this name already exists');
@@ -94,6 +146,19 @@ class TagModel {
       if (data.address !== undefined) updateData.address = data.address;
       if (data.source !== undefined) updateData.source = data.source;
       if (data.persist !== undefined) updateData.persist = data.persist;
+      
+      // Handle enhanced properties
+      if (data.scope !== undefined) updateData.scope = data.scope;
+      if (data.scopeLocked !== undefined) updateData.scope_locked = data.scopeLocked;
+      if (data.lifecycle !== undefined) updateData.lifecycle = data.lifecycle;
+      if (data.readOnly !== undefined) updateData.read_only = data.readOnly;
+      if (data.requiresApproval !== undefined) updateData.requires_approval = data.requiresApproval;
+      if (data.udtType !== undefined) updateData.udt_type = data.udtType;
+      if (data.hierarchyPath !== undefined) updateData.hierarchy_path = data.hierarchyPath;
+      if (data.area !== undefined) updateData.area = data.area;
+      if (data.equipment !== undefined) updateData.equipment = data.equipment;
+      if (data.routine !== undefined) updateData.routine = data.routine;
+      if (data.vendor !== undefined) updateData.vendor = data.vendor;
       
       // Handle metadata
       if (data.metadata !== undefined) {

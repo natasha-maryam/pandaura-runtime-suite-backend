@@ -366,6 +366,101 @@ router.get('/releases/:releaseId', async (req, res) => {
   try {
     const { releaseId } = req.params;
     const release = await versionModel.getReleaseById(releaseId);
+    
+    if (!release) {
+      return res.status(404).json({ success: false, error: 'Release not found' });
+    }
+
+    res.json({ success: true, release });
+  } catch (error) {
+    console.error('Error fetching release:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/versions/projects/:projectId/releases
+ * Create a new release
+ */
+router.post('/projects/:projectId/releases', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const releaseData = {
+      ...req.body,
+      projectId,
+    };
+
+    const release = await versionModel.createRelease(releaseData);
+    res.json({ success: true, release });
+  } catch (error) {
+    console.error('Error creating release:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/versions/releases/:releaseId/promote
+ * Promote a release to a new environment
+ */
+router.post('/releases/:releaseId/promote', async (req, res) => {
+  try {
+    const { releaseId } = req.params;
+    const { targetEnvironment, promotedBy } = req.body;
+
+    const result = await versionModel.promoteRelease(releaseId, targetEnvironment, promotedBy);
+    res.json(result);
+  } catch (error) {
+    console.error('Error promoting release:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/versions/releases/:releaseId/sign
+ * Sign a release
+ */
+router.post('/releases/:releaseId/sign', async (req, res) => {
+  try {
+    const { releaseId } = req.params;
+    const { signedBy } = req.body;
+
+    const result = await versionModel.signRelease(releaseId, signedBy);
+    res.json(result);
+  } catch (error) {
+    console.error('Error signing release:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/versions/projects/:projectId/stats
+ * Get all releases for a project
+ */
+router.get('/projects/:projectId/releases', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { status, environment } = req.query;
+
+    const filters = {};
+    if (status) filters.status = status;
+    if (environment) filters.environment = environment;
+
+    const releases = await versionModel.getReleases(projectId, filters);
+    res.json({ success: true, releases });
+  } catch (error) {
+    console.error('Error fetching releases:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/versions/releases/:releaseId
+ * Get a specific release
+ */
+router.get('/releases/:releaseId', async (req, res) => {
+  try {
+    const { releaseId } = req.params;
+    const release = await versionModel.getReleaseById(releaseId);
 
     if (!release) {
       return res.status(404).json({ success: false, error: 'Release not found' });
@@ -453,6 +548,86 @@ router.get('/projects/:projectId/history', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching project history:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============== RELEASE ROUTES ==============
+
+/**
+ * GET /api/versions/projects/:projectId/releases
+ * Get all releases for a project
+ */
+router.get('/projects/:projectId/releases', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { status, environment } = req.query;
+
+    const filters = {};
+    if (status) filters.status = status;
+    if (environment) filters.environment = environment;
+
+    const releases = await versionModel.getReleases(projectId, filters);
+    res.json({ success: true, releases });
+  } catch (error) {
+    console.error('Error fetching releases:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/versions/releases/:releaseId
+ * Get a specific release
+ */
+router.get('/releases/:releaseId', async (req, res) => {
+  try {
+    const { releaseId } = req.params;
+    const release = await versionModel.getReleaseById(releaseId);
+    
+    if (!release) {
+      return res.status(404).json({ success: false, error: 'Release not found' });
+    }
+
+    res.json({ success: true, release });
+  } catch (error) {
+    console.error('Error fetching release:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/versions/projects/:projectId/releases
+ * Create a new release
+ */
+router.post('/projects/:projectId/releases', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const releaseData = {
+      ...req.body,
+      projectId,
+    };
+
+    const release = await versionModel.createRelease(releaseData);
+    res.json({ success: true, release });
+  } catch (error) {
+    console.error('Error creating release:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/versions/releases/:releaseId/promote
+ * Promote a release to a new environment
+ */
+router.post('/releases/:releaseId/promote', async (req, res) => {
+  try {
+    const { releaseId } = req.params;
+    const { targetEnvironment, promotedBy } = req.body;
+
+    const result = await versionModel.promoteRelease(releaseId, targetEnvironment, promotedBy);
+    res.json(result);
+  } catch (error) {
+    console.error('Error promoting release:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

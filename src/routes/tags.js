@@ -276,4 +276,256 @@ router.post('/import', async (req, res) => {
   }
 });
 
+// UDT Routes
+router.get('/udts', async (req, res) => {
+  try {
+    res.json([]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/udts', async (req, res) => {
+  try {
+    const { name, description, members, projectId } = req.body;
+    
+    if (!name || !members) {
+      return res.status(400).json({ error: 'Name and members required' });
+    }
+
+    const udt = {
+      id: require('uuid').v4(),
+      name,
+      description: description || '',
+      members,
+      projectId,
+      createdAt: new Date().toISOString(),
+      createdBy: 'system'
+    };
+
+    res.status(201).json(udt);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Hierarchy Routes
+router.get('/hierarchy', async (req, res) => {
+  try {
+    res.json([]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Bulk Operations
+router.post('/bulk', async (req, res) => {
+  try {
+    const { operation, params = {}, tagIds, dryRun = true } = req.body;
+    const allTags = await tagModel.getAll();
+    const targetTags = allTags.filter(t => tagIds.includes(t.id));
+    
+    if (dryRun) {
+      // Return preview
+      const changes = targetTags.map(t => {
+        let preview = { tagId: t.id, tagName: t.name, action: operation };
+        
+        switch (operation) {
+          case 'rename':
+            preview.newName = t.name.replace(new RegExp(params.pattern, 'g'), params.replacement);
+            break;
+          case 'move':
+            preview.newScope = params.scope;
+            break;
+          case 'convert':
+            preview.newType = params.targetType;
+            break;
+          case 'duplicate':
+            preview.newName = t.name + (params.suffix || '_Copy');
+            break;
+        }
+        
+        return preview;
+      });
+      
+      return res.json({
+        operation,
+        dryRun: true,
+        affectedTags: targetTags.length,
+        changes
+      });
+    }
+    
+    // Execute actual operation
+    let updatedCount = 0;
+    
+    for (const tag of targetTags) {
+      let updateData = {};
+      
+      switch (operation) {
+        case 'rename':
+          updateData.name = tag.name.replace(new RegExp(params.pattern, 'g'), params.replacement);
+          break;
+        case 'move':
+          updateData.scope = params.scope;
+          break;
+        case 'convert':
+          updateData.type = params.targetType;
+          break;
+        case 'duplicate':
+          // Create new tag
+          await tagModel.create({
+            ...tag,
+            id: undefined,
+            name: tag.name + (params.suffix || '_Copy')
+          });
+          updatedCount++;
+          continue;
+        case 'delete':
+          updateData.lifecycle = 'archived';
+          break;
+      }
+      
+      if (Object.keys(updateData).length > 0) {
+        await tagModel.update(tag.id, updateData);
+        updatedCount++;
+      }
+    }
+    
+    res.json({
+      operation,
+      dryRun: false,
+      affectedTags: updatedCount,
+      success: true
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Refactoring Preview
+router.get('/:id/refactor-preview', async (req, res) => {
+  try {
+    const { newName } = req.query;
+    const allTags = await tagModel.getAll();
+    const tag = allTags.find(t => t.id === req.params.id);
+    
+    if (!tag) {
+      return res.status(404).json({ error: 'Tag not found' });
+    }
+
+    res.json({
+      tagId: tag.id,
+      oldName: tag.name,
+      newName,
+      affectedFiles: [],
+      requiresApproval: false,
+      estimatedImpact: 'low'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Tag Dependencies
+router.get('/:id/dependencies', async (req, res) => {
+  try {
+    const allTags = await tagModel.getAll();
+    const tag = allTags.find(t => t.id === req.params.id);
+    
+    if (!tag) {
+      return res.status(404).json({ error: 'Tag not found' });
+    }
+
+    // Mock dependencies - in real implementation, scan logic files
+    const dependencies = [
+      {
+        tagId: tag.id,
+        tagName: tag.name,
+        dependencyType: 'routine',
+        usageType: 'read',
+        location: {
+          fileName: 'MainControl.st',
+          lineNumber: 42,
+          column: 15
+        }
+      },
+      {
+        tagId: tag.id,
+        tagName: tag.name,
+        dependencyType: 'routine',
+        usageType: 'write',
+        location: {
+          fileName: 'TemperatureController.st',
+          lineNumber: 128,
+          column: 5
+        }
+      }
+    ];
+
+    res.json(dependencies);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Tag Aliases
+router.get('/:id/aliases', async (req, res) => {
+  try {
+    // Mock aliases - in real implementation, query from database
+    const aliases = [
+      {
+        id: '1',
+        tagId: req.params.id,
+        alias: 'TEMP_SENSOR_01',
+        vendorAddress: '40001',
+        description: 'Modbus register for temperature'
+      }
+    ];
+    res.json(aliases);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:id/aliases', async (req, res) => {
+  try {
+    const { aliases } = req.body;
+    // In real implementation, save to database
+    res.json({ success: true, saved: aliases.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Validation Rules
+router.get('/:id/validation-rules', async (req, res) => {
+  try {
+    // Mock rules - in real implementation, query from database
+    const rules = [
+      {
+        id: '1',
+        type: 'range',
+        value: { min: 0, max: 100 },
+        message: 'Value must be between 0 and 100',
+        severity: 'error'
+      }
+    ];
+    res.json(rules);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:id/validation-rules', async (req, res) => {
+  try {
+    const { rules } = req.body;
+    // In real implementation, save to database
+    res.json({ success: true, saved: rules.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
+

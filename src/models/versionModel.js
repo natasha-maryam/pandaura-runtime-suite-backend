@@ -686,6 +686,7 @@ class VersionModel {
         signed_by: createdBy,
         signed_at: new Date().toISOString(),
         status: 'active',
+        environment: releaseData.stage || 'main', // Default to main stage
         tags_json: tags ? JSON.stringify(tags) : null,
         metadata_json: metadata ? JSON.stringify(metadata) : null,
         bundle_path: bundleResult.bundlePath,
@@ -775,6 +776,37 @@ class VersionModel {
     };
   }
 
+  /**
+   * Sign a release
+   */
+  async signRelease(releaseId, signedBy) {
+    const release = await this.db('releases')
+      .where({ id: releaseId })
+      .first();
+
+    if (!release) {
+      throw new Error('Release not found');
+    }
+
+    if (release.signed) {
+      throw new Error('Release is already signed');
+    }
+
+    // Update release with signature information
+    await this.db('releases')
+      .where({ id: releaseId })
+      .update({
+        signed: true,
+        signed_by: signedBy,
+        signed_at: new Date().toISOString(),
+      });
+
+    return {
+      success: true,
+      release: await this.getReleaseById(releaseId),
+    };
+  }
+
   // ============== CHANGELOG OPERATIONS ==============
 
   /**
@@ -793,6 +825,90 @@ class VersionModel {
     });
 
     return { success: true };
+  }
+
+  // ============== RELEASE OPERATIONS ==============
+
+  /**
+   * Get all releases for a project
+   */
+  async getReleases(projectId, filters = {}) {
+    let query = this.db('releases')
+      .where({ project_id: projectId })
+      .orderBy('created_at', 'desc');
+
+    if (filters.status) {
+      query = query.where('status', filters.status);
+    }
+    if (filters.environment) {
+      query = query.where('environment', filters.environment);
+    }
+
+    const releases = await query;
+    return releases.map(release => this.formatRelease(release));
+  }
+
+  /**
+   * Get a single release by ID
+   */
+  async getReleaseById(releaseId) {
+    const release = await this.db('releases')
+      .where({ id: releaseId })
+      .first();
+
+    return release ? this.formatRelease(release) : null;
+  }
+
+  /**
+   * Create a new release
+   */
+  async createRelease(releaseData) {
+    const releaseId = uuidv4();
+
+    try {
+      await this.db('releases').insert({
+        id: releaseId,
+        project_id: releaseData.projectId,
+        snapshot_id: releaseData.snapshotId,
+        version_id: releaseData.versionId,
+        name: releaseData.name,
+        version: releaseData.version,
+        description: releaseData.description,
+        environment: releaseData.stage || 'main',
+        created_by: releaseData.createdBy,
+        created_at: new Date().toISOString(),
+        signed: false,
+        status: 'active',
+        tags_json: JSON.stringify(releaseData.tags || []),
+        metadata_json: JSON.stringify(releaseData.metadata || {}),
+      });
+
+      return await this.getReleaseById(releaseId);
+    } catch (error) {
+      console.error('Error creating release:', error);
+      throw new Error(`Failed to create release: ${error.message}`);
+    }
+  }
+
+  /**
+   * Promote a release to a new stage
+   */
+  async promoteRelease(releaseId, targetEnvironment, promotedBy) {
+    try {
+      // Update the release stage
+      await this.db('releases')
+        .where({ id: releaseId })
+        .update({
+          environment: targetEnvironment,
+          last_deployed_at: new Date().toISOString(),
+          deployed_by: promotedBy,
+        });
+
+      return { success: true, message: `Release promoted to ${targetEnvironment}` };
+    } catch (error) {
+      console.error('Error promoting release:', error);
+      throw new Error(`Failed to promote release: ${error.message}`);
+    }
   }
 
   // ============== FORMATTING HELPERS ==============
@@ -894,6 +1010,7 @@ class VersionModel {
       signedBy: release.signed_by,
       signedAt: release.signed_at,
       status: release.status,
+      stage: release.environment || 'main', // Map environment to stage
       tags: release.tags_json ? JSON.parse(release.tags_json) : [],
       metadata: release.metadata_json ? JSON.parse(release.metadata_json) : {},
       bundlePath: release.bundle_path,
